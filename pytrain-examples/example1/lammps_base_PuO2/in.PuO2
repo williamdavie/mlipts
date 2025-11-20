@@ -1,0 +1,55 @@
+
+# set periodic boundaries, units and thero-baro damping
+boundary p p p
+atom_style full
+units metal
+variable THERMO_DAMP equal 0.1
+variable BARO_DAMP equal 0.5
+
+# import structure and assign atom labels
+read_data puo2.dat
+
+# set charges
+set type 1 charge -1.1104
+set type 2 charge  2.2208
+
+# define interatomic potential via coulombic and embed_UO2.fs tabulation 
+kspace_style pppm 1.0e-5
+variable SR_CUTOFF equal 11.0
+pair_style hybrid/overlay coul/long ${SR_CUTOFF} eam/fs
+pair_coeff   *    *    coul/long
+pair_coeff   *    *    eam/fs LAMMPS_PuO2.fs O Pu
+
+#Perform minimization
+fix boxrelax_fix all box/relax aniso 0.0 vmax 0.001
+thermo 1
+thermo_style custom step cpu press etotal lx cella cellb cellc cellalpha cellbeta cellgamma
+min_style sd
+min_modify line quadratic dmax 0.05
+minimize 1.0e-25 1.0e-25 1000 10000
+unfix boxrelax_fix
+
+
+# Create 4x4x4 supercell containing 768 atoms
+replicate 4 4 4
+
+#store data
+dump                dumpall all custom 1000 md.lammpstrj id type x y z
+
+# create initial velocities and set timestep
+velocity all create 300 160278
+timestep 0.002
+
+# Set-up thermostat/barostat
+
+£T 100 200
+
+fix thermostat_fix all npt temp £T £T ${THERMO_DAMP} iso 0.0 0.0 ${BARO_DAMP}
+
+thermo_style custom step temp press pe ke etotal lx ly lz
+thermo 10
+
+neigh_modify delay 0 every 1 check yes
+
+# equilibrate for 50ps
+run 5000

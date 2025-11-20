@@ -1,0 +1,54 @@
+
+
+boundary p p p
+atom_style full
+units metal
+variable THERMO_DAMP equal 0.1
+variable BARO_DAMP equal 0.5
+
+
+read_data PuO2.dat
+
+
+set type 1 charge -1.1104
+set type 2 charge 2.2208
+
+
+kspace_style pppm 1.0e-5
+variable SR_CUTOFF equal 11.0
+pair_style hybrid/overlay coul/long ${SR_CUTOFF} eam/fs
+pair_coeff * * coul/long
+pair_coeff * * eam/fs /work/e89/e89/wd324/Programs/lammps/potentials/LAMMPS_CRG_PuO2.fs O Pu
+
+
+fix boxrelax_fix all box/relax aniso 0.0 vmax 0.001
+thermo 1
+thermo_style custom step cpu press etotal lx cella cellb cellc cellalpha cellbeta cellgamma
+min_style sd
+min_modify line quadratic dmax 0.05
+minimize 1.0e-25 1.0e-25 1000 10000
+unfix boxrelax_fix
+
+
+
+replicate 4 4 4
+
+
+dump dumpall all custom 1000 md.lammpstrj id type x y z
+
+
+velocity all create 300 160278
+timestep 0.002
+
+
+
+
+fix thermostat_fix all npt temp 100 100 ${THERMO_DAMP} iso 0.0 0.0 ${BARO_DAMP}
+
+thermo_style custom step temp press pe ke etotal lx ly lz
+thermo 10
+
+neigh_modify delay 0 every 1 check yes
+
+
+run 5000
