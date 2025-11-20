@@ -12,9 +12,11 @@ from mlipts.hpc_submission.archer2 import *
 
 from mlipts.append_to_database import *
 
-class dataCollection():
+import subprocess
+
+class DataCollection():
     
-    def __init__(self, MD_base: str, electronic_base: str) -> None:
+    def __init__(self, MD_base: str, electronic_base: str, atom_types: list[str]) -> None:
         
         self.MD_base = MD_base
         self.electronic_base = electronic_base
@@ -22,12 +24,16 @@ class dataCollection():
         # stores the script that runs MD calculations for our workflow. 
         self.MD_sequence_script = None
         
+        self.QM_scripts: list[str] = []  # a list of submission scripts for DFT.
+        
         # stores a list of directories containing MD calculations
         self.MD_calculations = None
         self.electronic_calculations = None
         
         # a list of directory strings
         self.electronic_calculation_dirs: list[str] = []
+        
+        self.atom_types = atom_types
         
 
     def build_lammps_calculations(self,label: str='lammps') -> list[str]:
@@ -76,7 +82,7 @@ class dataCollection():
             print('Submission script saved to: submit_lammps_calcs')
             
     
-    def build_vasp_for_lammps(self,atom_type_labels: list[str]):
+    def build_vasp_for_lammps(self):
         
         assert type(self.MD_calculations) == buildLAMMPS, 'Your MD calculation is not LAMMPS format, must run build_lammps_calculations()'
         
@@ -88,7 +94,7 @@ class dataCollection():
         
             build_vasp = constructVASP(self.electronic_base,lammps_calc)
             build_vasp.read_pos_LAMMPS()
-            build_vasp.build_vasp_dirs(atom_type_labels)
+            build_vasp.build_vasp_dirs(self.atom_types)
             
             self.electronic_calculations.append(build_vasp)
             
@@ -140,12 +146,26 @@ done\n'''
             if show==True:
                 print('SCRIPT PREVIEW: ')
                 print(vasp_submit)
-                
-            with open(f'submit_vasp_#{i}','w') as f:
+            
+            Path('./QM_submission').mkdir(exist_ok=True)
+            
+            with open(f'./QM_submission/submit_vasp_#{i}','w') as f:
                 f.write(vasp_submit)
-                print(f'Submission script saved to: submit_vasp_#{i}')
+                self.QM_scripts.append(f'./QM_submission/submit_vasp_#{i}')
+                
+                print(f'Submission script saved to: ./QM_submission/submit_vasp_#{i}')
 
+    
+    def QM_submit_all(self) -> None:
         
+        print('This command must be run from your working directory.')
+        
+        for i in self.QM_scripts:
+            
+            result = subprocess.run(f'sbatch {i}', shell=True, capture_output=True, text=True)
+            
+            print(result.stdout)
+            
     
     def append_vasp_to_mace_data(self,database_file: str, all: bool=True, clean_vasp_dirs: bool=True):
         '''
