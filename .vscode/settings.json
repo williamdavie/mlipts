@@ -1,0 +1,8 @@
+{
+    "python.analysis.extraPaths": [
+        "./mlips"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./mlips"
+    ]
+}

@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: mlipts
+Version: 0.1.0
+Summary: MLIPTS: Machine Learning Interatomic Potentials Training Suite
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
+
+
+# Machine Learned Interatomic Potentials - Training Suite (MLIPTS).
+
+Seemless data collection for training machine learned interatomic potentials.

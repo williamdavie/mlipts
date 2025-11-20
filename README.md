@@ -1,7 +1,5 @@
 
 
-The current workflow is as follows:
+# Machine Learned Interatomic Potentials - Training Suite (MLIPTS).
 
-    - construct_lammps.py base_directory
-
-    
+Seemless data collection for training machine learned interatomic potentials.

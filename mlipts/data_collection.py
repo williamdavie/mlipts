@@ -2,13 +2,15 @@
 '''
 @Author William Davie
 
-Main class for collecting a training data set. 
+Main class for collecting a data set for model training/fine-tuning. 
 '''
 
-from pytrain.lammps import *
-from pytrain.vasp import *
-from pytrain.append_to_database import *
+from mlipts.codes.lammps import *
+from mlipts.codes.vasp import *
 
+from mlipts.hpc_submission.archer2 import *
+
+from mlipts.append_to_database import *
 
 class trainingWorkflow():
     
@@ -55,8 +57,6 @@ class trainingWorkflow():
         
         
         if hpc == 'Archer2':
-            
-            from pytrain.hpc_submissions.archer2 import archer2_submission_template
             
             lammps_script += archer2_submission_template(nodes=nodes,ranks=ranks,time=time)
         
@@ -119,8 +119,6 @@ class trainingWorkflow():
             vasp_submit = ''
         
             if hpc == 'Archer2':
-            
-                from pytrain.hpc_submissions.archer2 import archer2_submission_template
             
                 vasp_submit += archer2_submission_template(nodes=nodes,ranks=ranks,time=time_per_script)
         
