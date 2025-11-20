@@ -12,9 +12,9 @@ from mlipts.hpc_submission.archer2 import *
 
 from mlipts.append_to_database import *
 
-class trainingWorkflow():
+class dataCollection():
     
-    def __init__(self, MD_base: str, electronic_base: str):
+    def __init__(self, MD_base: str, electronic_base: str) -> None:
         
         self.MD_base = MD_base
         self.electronic_base = electronic_base
@@ -30,16 +30,16 @@ class trainingWorkflow():
         self.electronic_calculation_dirs: list[str] = []
         
 
-    def build_lammps_calculations(self) -> list[str]:
+    def build_lammps_calculations(self,label: str='lammps') -> list[str]:
         '''
         Generates a set of directories containing input files for lammps calculations
     
-        Number of directories generated depends on the variable set in ./lammps_base_*
+        Number of directories generated depends on the variable set in MD_base
 
         Returns a list of directory names.
         '''
         
-        build = buildLAMMPS(f'{self.MD_base}')
+        build = buildLAMMPS(f'{self.MD_base}',label)
         build.fetch_variables() 
         build.set_variables()
         build.generate_outputs()

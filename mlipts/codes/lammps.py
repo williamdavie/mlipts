@@ -2,13 +2,13 @@
 
 @Author: William Davie
 
-Automatically set's up a LAMMPS calculation, snapshots of this calculation are used for training. 
+Automatically set's up a LAMMPS calculation, snapshots of this calculation are used for DFT caclulations. 
 
 The user provides a 'base directory' including:
 
     - The input file
         - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
-        - (Option) A pytrain specific variable marked with £
+        - (Option) A mlipts specific variable marked with £
         
     - The .dat file containing atomic positions
     
@@ -32,8 +32,11 @@ from itertools import product
 
 
 class buildLAMMPS():
+    '''
+    build a set of LAMMPS calculation directories. 
+    '''
     
-    def __init__(self, base_directory: str):
+    def __init__(self, base_directory: str, new_dir_label: str='lammps'):
         
         print('BASE:', base_directory)
         
@@ -62,11 +65,8 @@ class buildLAMMPS():
         
         lmps_input = list(Path(self.base_directory).glob('in.*'))
         
-        #assert lmps_input, 'Error: LAMMPS base directory must contain an input file formated as "in.*"'
-        
-        #assert len(lmps_input) == 1, 'Error: base directory has multiple files named "in.* '
-        
-        # string contraining lammps input edits
+        # label defines how output dirs are named
+        self.label = new_dir_label 
         
         pass
     
@@ -106,10 +106,7 @@ class buildLAMMPS():
         
         for combination in product(*all_values):
             
-            new_dir_name = os.path.basename(self.base_directory)
-            
-            if 'lammps_base_' in new_dir_name:
-                new_dir_name = new_dir_name.replace('lammps_base_','')
+            new_dir_name = self.label
             
             current_variables_dict = {var: None for var in self.variables}
             
