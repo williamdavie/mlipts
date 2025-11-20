@@ -21,46 +21,54 @@ import numpy as np
 
 def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T'):
     
-    calc = py4vasp.Calculation.from_path(vasp_dir)
-    
     final_config = ''
+    
+    try:
+        
+        calc = py4vasp.Calculation.from_path(vasp_dir)
 
     # fetch energy
-    energy_toten = calc.energy.to_dict()
-    eval = energy_toten['free energy    TOTEN']
+        energy_toten = calc.energy.to_dict()
+        eval = energy_toten['free energy    TOTEN']
+    
     
     # fetch force and structure data
-    force_data =  calc.force.to_dict()
+        force_data =  calc.force.to_dict()
 
-    elements = force_data['structure']['elements']
-    num_atoms = len(elements)
+        elements = force_data['structure']['elements']
+        num_atoms = len(elements)
 
-    l_vecs = force_data['structure']['lattice_vectors']
-    lattice_str = f'Lattice="{l_vecs[0,0]} {l_vecs[0,1]} {l_vecs[0,2]} {l_vecs[1,0]} {l_vecs[1,1]} {l_vecs[1,2]} {l_vecs[2,0]} {l_vecs[2,1]} {l_vecs[2,2]}"'
+        l_vecs = force_data['structure']['lattice_vectors']
+        lattice_str = f'Lattice="{l_vecs[0,0]} {l_vecs[0,1]} {l_vecs[0,2]} {l_vecs[1,0]} {l_vecs[1,1]} {l_vecs[1,2]} {l_vecs[2,0]} {l_vecs[2,1]} {l_vecs[2,2]}"'
     
-    atomic_positions = force_data['structure']['positions']
+        atomic_positions = force_data['structure']['positions']
     
-    forces = force_data['forces']
+        forces = force_data['forces']
     
     # write config
-    final_config += f'{num_atoms}\n'
-    final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces:R:3 energy={eval} pbc="{pbc}"\n'
+        final_config += f'{num_atoms}\n'
+        final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces:R:3 energy={eval} pbc="{pbc}"\n'
     
-    for i in range(num_atoms):
+        for i in range(num_atoms):
         
         # convert to cartiesian
         
-        species = elements[i]
-        position = atomic_positions[i][0] * l_vecs[0] + atomic_positions[i][1] * l_vecs[1] + atomic_positions[i][2] * l_vecs[2]
-        force = forces[i] # possibly a conversion required.
+            species = elements[i]
+            position = atomic_positions[i][0] * l_vecs[0] + atomic_positions[i][1] * l_vecs[1] + atomic_positions[i][2] * l_vecs[2]
+            force = forces[i] # possibly a conversion required.
         
-        final_config += f'{species} {position[0]} {position[1]} {position[2]} {force[0]} {force[1]} {force[2]}\n'
+            final_config += f'{species} {position[0]} {position[1]} {position[2]} {force[0]} {force[1]} {force[2]}\n'
         
     # append config.
         
         
-    with open(database_file,'a') as f:
-        f.write('\n' + final_config)
+        with open(database_file,'a') as f:
+            f.write('\n' + final_config)
+            
+    except Exception as e:
+        print(f'The calculation under {vasp_dir} did not failed or did not finish.')
+        print(e)
+        return None
         
         
         
