@@ -45,11 +45,10 @@ def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T')
     
         forces = force_data['forces']
     
-    # write config
         final_config += f'{num_atoms}\n'
         final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces:R:3 energy={eval} pbc="{pbc}"\n'
     
-        for i in range(num_atoms):
+        for i in range(0,num_atoms):
         
         # convert to cartiesian
         
@@ -59,11 +58,8 @@ def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T')
         
             final_config += f'{species} {position[0]} {position[1]} {position[2]} {force[0]} {force[1]} {force[2]}\n'
         
-    # append config.
-        
-        
         with open(database_file,'a') as f:
-            f.write('\n' + final_config)
+            f.write(final_config)
             
     except Exception as e:
         print(f'The calculation under {vasp_dir} did not failed or did not finish.')

@@ -91,6 +91,19 @@ class DataCollection():
         self.DFTcount: int = 0
         
         for lammps_calc in self.MD_calculations.new_dirs:
+            
+            md_output = list(Path(lammps_calc).glob('md.*'))
+
+            if not md_output:
+        
+                print(f'''Error: Lammps simulation directory ({lammps_calc}) does not contain output file formated as "md.*"
+                
+        - This calculation will not be used to construct VASP directories.
+        - To use this LAMMPS calculation, rerun this method. 
+                ''')
+    
+                continue
+    
         
             build_vasp = constructVASP(self.electronic_base,lammps_calc)
             build_vasp.read_pos_LAMMPS()
@@ -181,7 +194,23 @@ done\n'''
             
     
         return None
+    
+    def clean_all(self):
+        '''
+        Deletes all calculation directories.
+        '''
         
+        print('Warning <!>, you are about to delete all calculation folders, ensure your data has been saved')
+        continue_bool = input('Are you sure you want to continue "Y" / "N": ')
+        
+        if continue_bool == 'Y':
+            
+            for dir in self.MD_calculations.new_dirs:
+                try:
+                    shutil.rmtree(dir)
+                except:
+                    pass
+                
 
     #def build_archer2_MD_submission(self):
         
