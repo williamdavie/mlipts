@@ -120,9 +120,10 @@ class DataCollection():
         # this is currently not quite correct. 
         print(f' DFT calculations to run with {build_vasp.num_atoms} atoms: {self.DFTcount}')
         
-    def build_vasp_submission_scripts(self, vasp_cmd_line: str, num_script_partitions: int, nodes: int, ranks: int, time_per_script: str, hpc: str='Archer2', show: bool=False):
+    def build_vasp_submission_scripts(self, vasp_cmd_line: str, num_script_partitions: int, nodes: int, ranks: int, time_per_script: str, hpc: str='Archer2', show: bool=False, 
+                                      save_and_remove: bool=False, database_file: str=None):
         
-        # Leaving this as is for now:
+        # Leaving this as is for now
         assert self.DFTcount % num_script_partitions == 0, f'Number DFT counts ({self.DFTcount}) must be divisible by number of partions ({num_script_partitions})'
         num_calcs_per_submission = self.DFTcount / num_script_partitions
 
@@ -132,6 +133,17 @@ class DataCollection():
         
         print(f'Each script will carry out {num_calcs_per_submission} DFT caculations, over a time of {time_per_script}')
         
+        
+        if save_and_remove == True:
+            assert database_file != None, "Error you have save data as your calculations are performed but did not specify a database_file name"
+
+            # relies on a lot of formatting across the code
+            savedata_cmd = f'python -m mlpits.append_to_database $i {database_file}'
+            remove_cmd = 'rm -r $i'
+            
+        else:
+            savedata_cmd = ''
+            remove_cmd = ''
         
         for i in range(num_script_partitions):
             
@@ -154,6 +166,8 @@ do
 cd $i
     {vasp_cmd_line}
 cd -
+{savedata_cmd}
+{remove_cmd}
 done\n'''
             
             if show==True:

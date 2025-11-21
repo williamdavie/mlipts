@@ -18,6 +18,7 @@ Developer notes:
 
 import py4vasp
 import numpy as np
+import sys,os
 
 def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T'):
     
@@ -46,7 +47,7 @@ def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T')
         forces = force_data['forces']
     
         final_config += f'{num_atoms}\n'
-        final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces:R:3 energy={eval} pbc="{pbc}"\n'
+        final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces_xtb:R:3 energy_xtb={eval} pbc="{pbc}"\n'
     
         for i in range(0,num_atoms):
         
@@ -73,4 +74,11 @@ def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T')
     
 
 if __name__ == '__main__': 
-    append_vasp_calculation('./scf','test.txt')
+    
+    vasp_calc = sys.argv[1]
+    
+    database_file = sys.argv[2]
+    
+    append_vasp_calculation(vasp_calc,database_file)
+    
+    print(f'Data from {vasp_calc} has been append to the database: {database_file}')
