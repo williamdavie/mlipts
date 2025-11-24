@@ -14,6 +14,9 @@ Developer notes:
 
 - Assumes all configs have same periodic boundry conditions.
 
+
+Now __main__ is vasp specific - will need to alter if other codes added in future. 
+
 '''
 
 import py4vasp
