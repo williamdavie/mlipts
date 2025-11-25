@@ -138,7 +138,7 @@ class DataCollection():
             assert database_file != None, "Error you have save data as your calculations are performed but did not specify a database_file name"
             assert pythonenv != None, 'Error you have save data, this requires python, please define a python enviroment.'
             # relies on a lot of formatting across the code
-            savedata_cmd = f'{pythonenv}/bin/python -m mlipts.append_to_database $i {database_file}'
+            savedata_cmd = f'{pythonenv}/bin/python -m mlpits.append_to_database $i {database_file}'
             remove_cmd = 'rm -r $i'
             
         else:
@@ -183,42 +183,16 @@ done\n'''
                 print(f'Submission script saved to: ./QM_submission/submit_vasp_#{i}')
 
     
-    def QM_submit_all(self, start: int=0, end: int=None) -> None:
-        '''
-        sbatch ~all scripts~
-        
-        start and end define the index of your scripts. Some hpcs will limit how many you can submit.
-        '''
+    def QM_submit_all(self) -> None:
         
         print('This command must be run from your working directory.')
         
-        # save IDs if need to cancel job. 
-        self.jobIDs = []
-        
-        if end==None: end=len(self.QM_scripts)
-        
-        for i in self.QM_scripts[start:end]:
+        for i in self.QM_scripts:
             
             result = subprocess.run(f'sbatch {i}', shell=True, capture_output=True, text=True)
             
-            result = result.stdout
-            print(result)
-            self.jobIDs.append(result.split()[2])
-            
-    def QM_cancel_all(self, start: int=0, end: int=None):
-        '''
-        cancel all scripts if you made a mistake using QM_submit_all()
-        '''
-        if end==None: end=len(self.QM_scripts)
-    
-        for i in self.QM_scripts[start:end]:
-            
-            print(i)
-            
-            result = subprocess.run(f'scancel {i}', shell=True, capture_output=True, text=True)
-            
             print(result.stdout)
-        
+            
     
     def append_vasp_to_mace_data(self,database_file: str, all: bool=True, clean_vasp_dirs: bool=True):
         '''
