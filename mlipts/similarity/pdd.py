@@ -11,8 +11,22 @@ import numpy as np
 from itertools import product
 from typing import Iterator
 from scipy.spatial import KDTree
+from ase.io import read,write 
+from ase import Atoms
 
 
+def atoms_configs_PDDs(configs: list[Atoms], k: int):
+    '''
+    Computes the pointwise distance distribution for all entries in a list of ase.Atoms objects
+    '''
+    PDDs = []
+    
+    for i in range(len(configs)):
+        cell = np.array(configs[i].cell)
+        motif = np.array(configs[i].positions)
+        PDDs.append(PDD(motif,cell,k))
+    return PDDs
+    
 
 def PDD(motif: np.ndarray,
         cell: np.ndarray,
@@ -111,16 +125,4 @@ def collapse(D: np.ndarray,tol: int=3) -> np.ndarray:
     
 if __name__ == '__main__':
     
-    motif=np.array([[0 ,0 ,0 ],
-                [2.698, 2.698, 0   ],
-                [2.698, 0,2.698],
-                [0 , 2.698, 2.698]])
-
-
-    cell=np.array([[5.396, 0,    0  ],
-          [0, 5.396, 0   ],
-          [0,  0,   5.396]])
-
-    print(PDD(motif,cell,20))
-    
-    
+    pass

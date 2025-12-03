@@ -1,17 +1,14 @@
 
 '''
-@Author William Davie
+@author William Davie
 
 Main class for collecting a data set for model training/fine-tuning. 
 '''
 
 from mlipts.codes.lammps import *
 from mlipts.codes.vasp import *
-
 from mlipts.hpc_submission.archer2 import *
-
 from mlipts.append_to_database import *
-
 import subprocess
 
 class DataCollection():
@@ -218,6 +215,14 @@ done\n'''
             result = subprocess.run(f'scancel {i}', shell=True, capture_output=True, text=True)
             
             print(result.stdout)
+            
+
+    def append_lammps_to_dataset(self, dataset: str):
+        '''
+        Adds lammps configurations to a dataset, used for similarity asse
+        '''
+        
+        return None
         
     
     def append_vasp_to_mace_data(self,database_file: str, all: bool=True, clean_vasp_dirs: bool=True):
@@ -252,8 +257,78 @@ done\n'''
                     pass
                 
 
+
+
     #def build_archer2_MD_submission(self):
         
         
 
     
+def read_pos_LAMMPS(lammps_dir: str):
+    '''
+    From file md.* reads output as specified in LAMMPS. 
+    '''
+    
+    md_output = open(lammps_dir).read()
+    split_lines = md_output.splitlines()
+    
+    timesteps = [] # snapshot time steps.
+    all_atomic_positions = [] 
+    all_lattice_vectors = []
+    num_snapshots = md_output.count('ITEM: TIMESTEP')
+    num_atoms = int(split_lines[split_lines.index('ITEM: NUMBER OF ATOMS') + 1])
+    
+    lattice_vectors = np.zeros((3,3))
+    
+    for i,line in enumerate(split_lines):
+        
+        if 'ITEM: TIMESTEP' in line:
+            timesteps.append(split_lines[i+1])
+
+        if 'ITEM: BOX BOUNDS' in line:
+            aline = split_lines[i+1].split()
+            bline = split_lines[i+2].split()
+            cline = split_lines[i+3].split()
+
+            # hi - lo
+            lattice_vectors[0,0] = float(aline[1]) - float(aline[0])
+            lattice_vectors[1,1] = float(bline[1]) - float(bline[0])
+            lattice_vectors[2,2] = float(cline[1]) - float(cline[0])
+        
+            all_lattice_vectors.append(lattice_vectors.copy())
+    
+        
+        if 'ITEM: ATOMS' in line:
+            
+            atomic_positions = np.zeros(shape=(num_atoms,3))
+            
+            types = np.zeros(shape=(num_atoms))
+            
+            line_split = line.split()
+            
+            args = line_split[2:]
+            
+            id_index = args.index('id')
+            type_index = args.index('type')
+            x_index = args.index('x')
+            y_index = args.index('y')
+            z_index = args.index('z')
+            
+            for atom in range(0,num_atoms):
+        
+                atom_line_split = split_lines[i+atom+1].split()
+
+                types[atom] = int(atom_line_split[type_index]) 
+                
+                atomic_positions[atom,0] = float(atom_line_split[x_index]) / lattice_vectors[0,0]
+                atomic_positions[atom,1] = float(atom_line_split[y_index]) / lattice_vectors[1,1]
+                atomic_positions[atom,2] = float(atom_line_split[z_index]) / lattice_vectors[2,2]
+                
+            # as required by vasp, must be type sorted. 
+            types_sorted = np.argsort(types)
+
+            types,type_counts = np.unique(types,return_counts=True)
+    
+            num_types = np.max(types)
+            
+            all_atomic_positions.append(atomic_positions[types_sorted])

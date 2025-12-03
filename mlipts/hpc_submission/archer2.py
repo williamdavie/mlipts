@@ -18,7 +18,7 @@ def archer2_submission_template(nodes: int, ranks: int, time: str, account='e89-
     
     return f'''#!/bin/bash
 
-#SBATCH --job-name=lammps_test
+#SBATCH --job-name=job_MLIPTS
 #SBATCH --nodes={nodes}
 #SBATCH --ntasks-per-node={ranks}
 #SBATCH --cpus-per-task=1

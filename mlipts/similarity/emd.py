@@ -11,9 +11,11 @@ This implementation takes advantage of scipy.optimize.linprog noting the oppitun
 '''
 
 from scipy.optimize import linprog
-
+from scipy.cluster import hierarchy
 import numpy as np
 from scipy.spatial.distance import cdist
+from ase.io import read, write
+import matplotlib.pyplot as plt
 
 
 def EMD(pdd_S: np.ndarray, pdd_Q: np.ndarray) -> float:
@@ -41,7 +43,31 @@ def EMD(pdd_S: np.ndarray, pdd_Q: np.ndarray) -> float:
     
     # calculate emd via scipy - leaving oppitunity to add other algorithms as functions.
     return emd_v_scipy(wS,wQ,D_SQ)
-        
+
+
+
+def EMD_hierarchy(PDDs: np.ndarray):
+    '''
+    Calculates the Earth Movers Distance across a set of PDDs and plots a corropsonding 'similarity' hierarchy.
+    
+    Copyright (C) 2025 Daniel Widdowson
+    '''
+
+    emds = []
+    for i in range(len(PDDs)):
+        for j in range(i+1, len(PDDs)):
+            emd = EMD(PDDs[i], PDDs[j])
+            emds.append(emd)
+    emds = np.array(emds)
+    print(len(emds))
+    
+    #Z = hierarchy.linkage(emds)
+    #dn = hierarchy.dendrogram(Z)
+    #plt.savefig('test_emd_hir.png')
+    
+    
+    return None
+    
     
 def emd_v_scipy(wS: np.ndarray, wQ: np.ndarray, D_SQ: np.ndarray) -> float:
     '''
@@ -51,7 +77,6 @@ def emd_v_scipy(wS: np.ndarray, wQ: np.ndarray, D_SQ: np.ndarray) -> float:
     '''
 
     mS, mQ = D_SQ.shape
-    print(mS,mQ)
     
     # Define constraints.
     # scipy requires constraints in form A_eq @ x == b_eq
@@ -78,15 +103,7 @@ def emd_v_scipy(wS: np.ndarray, wQ: np.ndarray, D_SQ: np.ndarray) -> float:
         A_eq[mS+j] = A_row
         b_eq[mS+j] = wQ[j]
         
-    return linprog(D_SQ.flatten(), A_eq=A_eq, b_eq=b_eq, bounds=[(0,1)], method='highs')
+    return linprog(D_SQ.flatten(), A_eq=A_eq, b_eq=b_eq, bounds=[(0,1)], method='highs').fun
 
 
-    
-    
-
-
-
-
-
-        
     
