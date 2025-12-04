@@ -46,7 +46,7 @@ def EMD(pdd_S: np.ndarray, pdd_Q: np.ndarray) -> float:
 
 
 
-def EMD_hierarchy(PDDs: np.ndarray):
+def EMD_hierarchy(PDDs: np.ndarray) -> None:
     '''
     Calculates the Earth Movers Distance across a set of PDDs and plots a corropsonding 'similarity' hierarchy.
     
@@ -55,15 +55,16 @@ def EMD_hierarchy(PDDs: np.ndarray):
 
     emds = []
     for i in range(len(PDDs)):
+        print(f"\rProgress: {int(100*i/len(PDDs))}%", end="")
         for j in range(i+1, len(PDDs)):
             emd = EMD(PDDs[i], PDDs[j])
             emds.append(emd)
     emds = np.array(emds)
     print(len(emds))
     
-    #Z = hierarchy.linkage(emds)
-    #dn = hierarchy.dendrogram(Z)
-    #plt.savefig('test_emd_hir.png')
+    Z = hierarchy.linkage(emds)
+    dn = hierarchy.dendrogram(Z)
+    plt.show()
     
     
     return None

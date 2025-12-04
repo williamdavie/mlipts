@@ -9,6 +9,7 @@ from mlipts.codes.lammps import build_lammps_calculations, write_lammps_bash_com
 from mlipts.hpc_submission.archer2 import archer2_submission_template
 from mlipts.similarity.filter import filter_by_emd
 from ase import Atoms
+from ase.io import read, write
 
 __hpcs__ = ['Archer2']
 __MDcodes__ = ['lammps']
@@ -33,7 +34,7 @@ class DataCollection():
         
         self.active_MD_configs = []
         
-    def build_MD_calculations(self, MD_base_dir: str, MDcode: str='lammps') -> None:
+    def build_MD_calculations(self, MD_base_dir: str, MDcode: str='lammps', outdir: str='.') -> None:
         '''
         Generates a set of directories for Molecular Dynamics simulations given the parameters set in MD_base. 
         
@@ -42,8 +43,10 @@ class DataCollection():
         MD_base_dir : str
             A directory containing all necessary files for successfully running a simulation given an MD code. See docs for details.
         MDcode: str 
-            MD code of choice.
-        
+            MD code of choice. Default is lammps.
+        outdir: str
+            Define a directory to store calculation files. Default is the working directory.
+            
         Returns
         -------
         None : None
@@ -56,8 +59,8 @@ class DataCollection():
         '''
         
         if MDcode == 'lammps':
-            new_dirs = build_lammps_calculations(MD_base_dir)
-            self.initialized_MD.append(*new_dirs)
+            new_dirs = build_lammps_calculations(MD_base_dir,None,outdir=outdir)
+            self.initialized_MD.extend(new_dirs)
         
         elif MDcode not in __MDcodes__:
             raise ValueError(f'{MDcode} not supported.')
@@ -118,13 +121,13 @@ class DataCollection():
         self.MD_submission_count += 1
         
         if mark_as_active:
-            self.active_MD.append(*self.initialized_MD)
+            self.active_MD.extend(self.initialized_MD)
             self.initialized_MD = []
       
         return None
     
 
-    def filter_active_MD(self,tol: float, method: str='emd', auto: bool=False, k: int=20):
+    def filter_active_MD(self,tol: float, method: str='emd', auto: bool=False, k: int=20, show_dendrograms: bool=False):
         '''
         Removes some configurations from set of active MD configs if they are too similar to eachother. The similarity between configurations is caclulated using a distance metric defined by method.
         
@@ -140,18 +143,24 @@ class DataCollection():
         Raises
         ------
         ValueError:
-            if method not availible.
+            if difference metric method not availible.
         '''
         
         self.fetch_active_MD_configs()
         
         if method == 'emd':
-            new_configs, inds = filter_by_emd(self.active_MD_configs,tol,k)
-            print(len(self.active_MD_configs))
-            print(len(new_configs))
+            new_configs, inds = filter_by_emd(self.active_MD_configs,tol,k=k,show_dendrograms=show_dendrograms)
             
         elif method not in __diffmethods__:
             raise ValueError(f'Distance metric method {method} not found')
+    
+        print(f"Filter reduced configuration space from {len(self.active_MD_configs)} to {len(new_configs)}")
+        
+        update_active = input("Update active configs? ('Y'/'N'): ")
+        if update_active.capitalize() == 'Y':
+            self.active_MD_configs = []
+            self.active_MD_configs.extend(new_configs)
+            print("Active configs updated.")
     
     
         return None
@@ -180,7 +189,13 @@ class DataCollection():
         
         return None
     
-
+    def __check_initialized__(self):
+        '''
+        prints initialized MD directories
+        '''
+        print('MD directories initialized: ')
+        print(self.initialized_MD)
+        
     
     def __check_active__(self):
         '''
@@ -188,3 +203,9 @@ class DataCollection():
         '''
         print('MD directories currently active: ')
         print(self.active_MD)
+        
+    def __save_active__(self, outname: str):
+        
+        write(f'{outname}.xyz',self.active_MD_configs)
+        
+        

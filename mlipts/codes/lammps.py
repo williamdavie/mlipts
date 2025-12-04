@@ -1,27 +1,10 @@
 '''
+@author: William Davie
 
-@Author: William Davie
-
-Automatically set's up a LAMMPS calculation, snapshots of this calculation are used for DFT caclulations. 
-
-The user provides a 'base directory' including:
-
-    - The input file
-        - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
-        - (Option) A mlipts specific variable marked with £
-        
-    - The .dat file containing atomic positions
-    
-    - Note that all contents of the base directory will be copied. 
-    
-The user also provides a pytrain 'variational input file', this file includes additional lines of a LAMMPS input file to loop through. 
-
-Notes:
-
-- lmps shorthand for LAMMPS
-- if multiple variables are specified it will generate N_var1 * N_var2 directories.
+File containing lammps specific functionality. Used to build many lammps calculations.
 
 '''
+
 
 import os, sys
 import shutil
@@ -32,16 +15,220 @@ from itertools import product
 from ase import Atoms
 
 
-def build_lammps_calculations(base_dir: str) -> list[str]:
+def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -> list[str]:
     '''
-    Generates a set of directories containing input files for lammps calculations
+    Generates a set of directories containing input files for lammps calculations. 
+    Reads the base directory, searches for a set of marked variables '£' and generates a directory for all values in the provided dictionary.
+    
+    Parameters
+    ----------
+    base_dir: str
+        path to the base lammps directory containing a in.* and .dat file. in.* is expected to include some variables marked '£'
+    variables: dict
+        keys should be formated as '£*' with corrosponding arrays.
+    outdir: str 
+        output directory for new calculations  
+        
+    Returns
+    -------
+    new_dirs: list[str]
+        a list of paths containing all calculations to be run.
+        
+    Raises
+    ------
+    FileNotFoundError:
+        if in.* or *.dat not found in base_dir
+    NameError:
+        if a key in variables cannot be found in *.in
+    
     '''
     
-    build = buildLAMMPS(f'{base_dir}')
-    build.fetch_variables() 
-    build.set_variables()
-    build.generate_outputs()
+    build = lammpsBuild(f'{base_dir}',variables)
+    build.read_directory()
+    build.generate_calculations(outdir=outdir)
     return build.new_dirs
+
+
+class lammpsBuild():
+    
+    def __init__(self, lammps_base_dir: str, variables: dict) -> None:
+        '''
+        Initialize a lammps build. 
+        
+        Parameters
+        ----------
+        lammps_base_dir: str
+            path to directory containing files for a lammps calculation
+        variables: dict
+            dictionary of variables to build new lammps directories from.
+        '''
+        self.lammps_base_dir = lammps_base_dir
+        
+        self.input = None
+        
+        self.variables = variables
+        self.variable_keys = list(self.variables.keys())
+        
+        self.new_dirs = []
+        
+        return None
+
+        
+    def read_directory(self) -> None:
+        '''
+        Reads files and errors if base directory does not have the correct format for constructing multiple directories.
+        
+        Raises
+        ------
+        FileNotFoundError:
+            if in.* or *.dat not found in base_dir
+        FileExistsError:
+            if multiple in.* or *.dat files are found
+        NameError:
+            if a key in variables cannot be found in *.in
+        
+        '''
+        
+        self.input_files = list(Path(self.lammps_base_dir).glob('in.*'))
+        self.dat_files = list(Path(self.lammps_base_dir).glob('*.dat'))
+        
+        if not self.input_files:
+            raise FileNotFoundError('No input (in.*) file found in base directory')
+        if not self.dat_files:
+            raise FileNotFoundError('No atomic data (*.dat) file found in base directory')
+        if len(self.input_files) > 1:
+            raise FileExistsError('Cannot have multiple input files (in.*)')
+        if len(self.dat_files) > 1:
+            raise FileExistsError('Cannot have multiple atomic data files (*.dat)')
+
+        self.input = open(self.input_files[0],'r').read()
+    
+        # remove comments
+        in_no_com = []
+        for line in self.input.splitlines():
+            line_without_comment = line.split('#', 1)[0].rstrip()
+            in_no_com.append(line_without_comment)
+        self.input = "\n".join(in_no_com)
+        
+        variables_in_file = list(set(re.findall(r"£\S+", self.input)))
+        print(variables_in_file)
+        
+        for i in self.variable_keys:
+            if i not in variables_in_file:
+                raise NameError(f'Variable {i} in input dictionary not found in lammps input file (in.*)')
+        
+        return None
+    
+    
+    def generate_calculations(self, label: str='lammps', outdir: str='.'):
+        
+        new_input_files = []
+        new_dir_names = []
+        all_values = list(self.variables.values())
+        
+        if self.input is None:
+            self.read_directory()
+        
+        # If multiple variables we need to specify all possible combinations 
+        for combination in product(*all_values):
+            #combination looks like tuple(var1, var2, var2, etc) 
+            new_dir_name = label
+            new_input_str = []
+            current_variables = {var: None for var in self.variable_keys}
+            
+            for i, val in enumerate(combination):
+                # label new calculation directory
+                var_name = self.variable_keys[i][1:] # assumes first character is £
+                new_dir_name += f'_{var_name}_{val}'
+                current_variables[self.variable_keys[i]] = val
+                
+            #now define new str for this combination 
+            for line in self.input.splitlines():
+                line_split = line.split()
+                
+                for var_name in self.variable_keys:
+                    if var_name in line_split:
+                        line_split = [str(current_variables[var_name]) if x == var_name else x for x in line_split]
+                        
+            
+                new_line = " ".join(line_split)
+                new_input_str.append(new_line)
+                
+            new_input_str = "\n".join(new_input_str)
+            
+            self.__write_calculation__(new_dir_name,new_input_str,outdir)
+            
+            
+
+                    
+    def __write_calculation__(self, calc_name: str, input_str: str, outdir: str) -> None:
+        '''
+        Given a base directory (self), calculation name and lammps input file string, a new calculation is written.
+        '''
+        
+        Path(outdir).mkdir(exist_ok=True)
+    
+        new_dir = outdir + '/' + calc_name 
+        self.new_dirs.append(new_dir)
+        
+        shutil.copytree(self.lammps_base_dir, new_dir ,dirs_exist_ok=True)
+            
+        with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
+            f.write(input_str)
+                
+        print(f'Caculation directory generated: {outdir}/{new_dir}')
+        
+        return None
+        
+        
+        
+    def generate_bash_command(self,lammps_cmd_line: str):
+        
+        dirs = ''
+        for dir in self.new_dir_names:
+            dirs += f'{dir} '
+            
+        output_name = 'out.' + self.input_file_name.split(".")[1]
+        
+        
+        result = f'directories="{dirs}"\n'
+        
+        result += f'cd {self.lammps_output_dir}\n'
+        
+        result+=f'''for i in $directories; 
+do 
+cd $i
+    {lammps_cmd_line} -i {self.input_file_name} -l {output_name}
+cd ..
+done\n'''
+        result += 'cd ..'
+
+        
+        return result
+
+    
+    def add_variable_to_base(self, name: str, vals: np.ndarray, decimals: int=0):
+        
+        new_var = f'£{name} '
+    
+        for val in vals:
+            if decimals==0: decimals=None
+            new_var += f'{round(val,decimals)}'
+        
+        with open(self.lmps_input[0],'a') as f:
+            f.write('\n')
+            f.write(new_var)
+        
+    
+
+#base_dir = sys.argv[1]
+#out_dir = sys.argv[2]
+
+#test = contructLAMMPS(f'./{base_dir}')
+#test.fetch_variables()
+#test.set_variables()
+#test.generate_outputs(output_directory=f"./{out_dir}")
+
 
 
 def write_lammps_bash_command(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
@@ -53,31 +240,31 @@ def write_lammps_bash_command(lammps_dirs: list[str], lammps_cmd_line: str, outp
     for dir in lammps_dirs:
         dirs += f'{dir} '
         
-        input_path = list(Path(dir).glob('in.*'))[0]
-        input_name = input_path.name
+    input_path = list(Path(dir).glob('in.*'))[0]
+    input_name = input_path.name
+    
         
-            
-        output_name = 'out.' + input_name.split(".")[1]
-        
-        result = f'directories="{dirs}"\n'
-        
-        result += f'cd {output_directory}\n'
-        
-        result+=f'''for i in $directories; 
+    output_name = 'out.' + input_name.split(".")[1]
+    
+    result = f'directories="{dirs}"\n'
+    
+    result += f'cd {output_directory}\n'
+    
+    result+=f'''for i in $directories; 
 do 
 cd $i
-    {lammps_cmd_line} -i {input_name} -l {output_name}
-cd ..
+{lammps_cmd_line} -i {input_name} -l {output_name}
+cd -
 done\n'''
-        result += 'cd ..'
+    result += 'cd ..'
 
-        
-        return result
+    
+    return result
     
 
 def read_lammps_output(output_dir: str, atom_types: list[str], pbc: bool=True) -> list[Atoms]:
     '''
-    Read lammps output.
+    Read lammps *md output file.
     '''
     
     output_dir = list(Path(output_dir).glob('md.*'))
@@ -167,199 +354,29 @@ def read_lammps_output(output_dir: str, atom_types: list[str], pbc: bool=True) -
         configs.append(config)
         
     return configs
-        
-        
-        
-        
-        
-
-class buildLAMMPS():
-    '''
-    build a set of LAMMPS calculation directories. 
-    '''
-    
-    def __init__(self, base_directory: str, new_dir_label: str='lammps'):
-        
-        print('BASE:', base_directory)
-        
-        self.base_directory = base_directory
-        
-        self.lmps_input = list(Path(self.base_directory).glob('in.*'))
-        self.lmps_dat = list(Path(self.base_directory).glob('*.dat'))
-        
-        assert self.lmps_input, 'Error: LAMMPS base directory must contain an input file formated as "in.*"'
-        
-        assert self.lmps_dat, 'Error: LAMMPS base directory must contain initial positions *.dat file'
-        
-        assert len(self.lmps_input) == 1, 'Error: base directory has multiple files named "in.* '
-        
-        self.var_in_file = open(self.lmps_input[0],'r').read()
-        
-        self.input_file_name = os.path.basename(self.lmps_input[0])
-        
-        # remove comments:
-        var_in_no_com = []
-        for line in self.var_in_file.splitlines():
-            line_without_comment = line.split('#', 1)[0].rstrip()
-            var_in_no_com.append(line_without_comment)
-            
-        self.var_in_file = "\n".join(var_in_no_com)
-        
-        lmps_input = list(Path(self.base_directory).glob('in.*'))
-        
-        # label defines how output dirs are named
-        self.label = new_dir_label 
-        
-        pass
-    
-    def fetch_variables(self):
-        '''
-        Searches for all variables.
-        '''
-        
-        self.variables = list(set(re.findall(r"£\S+", self.var_in_file)))
-        
-        self.variables_dict = {var: None for var in self.variables}
-        
-        for line in self.var_in_file.splitlines():
-            
-            linesplit = line.split()
-            
-            if linesplit:
-                if linesplit[0] in self.variables:
-                    
-                    # relies on format: £variable = 
-                    # since '=' will be second in the list
-    
-                    self.variables_dict[linesplit[0]] = linesplit[1:]
-                    
-
-        assert None not in self.variables_dict.values(), 'You called an undefined a variable'
-
-    def set_variables(self):
-        
-        self.new_input_files = []
-        
-        self.new_dir_names = []
-        
-        all_values = list(self.variables_dict.values())
-        
-        # If multiple variables we need to specify all possible combinations 
-        
-        for combination in product(*all_values):
-            
-            new_dir_name = self.label
-            
-            current_variables_dict = {var: None for var in self.variables}
-            
-            for i, val in enumerate(combination):
-                
-                current_variables_dict[self.variables[i]] = val
-                
-                var_name = self.variables[i].replace('£','')
-                new_dir_name += f'_{var_name}_{val}'
-                
-            new_input_file_str = []
-            
-            for line in self.var_in_file.splitlines():
-            
-                linesplit = line.split()
-                
-                pass_line = False
-                
-                if linesplit:
-                    
-                    for var in self.variables:
-        
-                        if linesplit[0] == var:
-                            pass_line = True
-                             # we want to ignore these lines for out final output as lammps will fail if line starts with £
-                        
-                        if var in linesplit:
-                            
-                            linesplit = [current_variables_dict[var] if x == var else x for x in linesplit]
-                
-                if pass_line:
-                    continue 
-                
-                
-                new_line = " ".join(linesplit)
-                             
-                new_input_file_str.append(new_line)
-                
-            new_input_file_str = "\n".join(new_input_file_str)
-            
-            self.new_input_files.append(new_input_file_str)
-            
-            self.new_dir_names.append(new_dir_name)
-        
-        
-    def generate_outputs(self, output_directory: str='.'):
-        '''
-        in the output directory the code will generate: output_directory/dir1 output_directory/dir2 etc
-        '''
-        
-        self.lammps_output_dir = output_directory
-        
-        Path(output_directory).mkdir(exist_ok=True)
-        
-        self.new_dirs = []
-        
-        for i, input_file in enumerate(self.new_input_files):
-            
-            new_dir = output_directory + '/' + self.new_dir_names[i]
-            
-            self.new_dirs.append(new_dir)
-            
-            shutil.copytree(self.base_directory, new_dir ,dirs_exist_ok=True)
-            
-            with open(output_directory + '/' + self.new_dir_names[i] + '/' + Path(self.lmps_input[0]).name, 'w') as f:
-                
-                f.write(input_file)
-                
-            print(f'Caculation directory generated: {output_directory}/{self.new_dir_names[i]}')
-    
-    def generate_bash_command(self,lammps_cmd_line: str):
-        
-        dirs = ''
-        for dir in self.new_dir_names:
-            dirs += f'{dir} '
-            
-        output_name = 'out.' + self.input_file_name.split(".")[1]
-        
-        
-        result = f'directories="{dirs}"\n'
-        
-        result += f'cd {self.lammps_output_dir}\n'
-        
-        result+=f'''for i in $directories; 
-do 
-cd $i
-    {lammps_cmd_line} -i {self.input_file_name} -l {output_name}
-cd ..
-done\n'''
-        result += 'cd ..'
-
-        
-        return result
-        
-            
-    
-import sys
-if __name__ == '__main__':
-    
-    read_LAMMPS_output(sys.argv[1])
-    
-    
-    
-
-#base_dir = sys.argv[1]
-#out_dir = sys.argv[2]
-
-#test = contructLAMMPS(f'./{base_dir}')
-#test.fetch_variables()
-#test.set_variables()
-#test.generate_outputs(output_directory=f"./{out_dir}")
 
 
 
+'''
+
+
+Automatically set's up a LAMMPS calculation, snapshots of this calculation are used for DFT caclulations. 
+
+The user provides a 'base directory' including:
+
+    - The input file
+        - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
+        - (Option) A mlipts specific variable marked with £
+        
+    - The .dat file containing atomic positions
+    
+    - Note that all contents of the base directory will be copied. 
+    
+The user also provides a pytrain 'variational input file', this file includes additional lines of a LAMMPS input file to loop through. 
+
+Notes:
+
+- lmps shorthand for LAMMPS
+- if multiple variables are specified it will generate N_var1 * N_var2 directories.
+
+'''
