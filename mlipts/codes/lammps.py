@@ -3,8 +3,16 @@
 
 File containing lammps specific functionality. Used to build many lammps calculations.
 
-'''
+Main functionality is to automatically set up many LAMMPS calculations, snapshots of each calculation can then used for QM caclulations. 
 
+The user provides a 'base directory' including:
+
+    The input (in.*) file:
+        - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
+        - Variables marked with '£' which will be replaced by values in a list/array.
+        
+    The .dat file containing atomic positions
+'''
 
 import os, sys
 import shutil
@@ -13,6 +21,123 @@ import numpy as np
 import re
 from itertools import product
 from ase import Atoms
+from typing import Optional 
+
+
+def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=True) -> list[Atoms]:
+    '''
+    Read lammps *md output file.
+    
+    Parameters
+    ----------
+    outdir: str
+        directory of lammps calculation
+    atom_types: str[list]
+        list of atom types, ordered as in lammps output
+    pbc: Optional[bool]
+        define the type of periodic boundry conditions used in simulation.
+    
+    Returns 
+    -------
+    configs: list[Atoms]
+        list of atomic configurations fetched from dump file. Returned as a list of ase.Atoms types.
+    '''
+    
+    output_dir = list(Path(output_dir).glob('md.*'))
+    md_output = open(output_dir[0],'r').read()
+    split_lines = md_output.splitlines()
+    
+    timesteps = [] # snapshot time steps.
+    all_atomic_positions = [] 
+    all_lattice_vectors = []
+    type_labels = []
+    
+    num_snapshots = md_output.count('ITEM: TIMESTEP')
+    num_atoms = int(split_lines[split_lines.index('ITEM: NUMBER OF ATOMS') + 1])
+    
+    #atom_information_string = split_lines[split_lines.index('')]
+    
+    lattice_vectors = np.zeros((3,3))
+        
+    for i,line in enumerate(split_lines):
+        
+        if 'ITEM: TIMESTEP' in line:
+            timesteps.append(split_lines[i+1])
+
+        if 'ITEM: BOX BOUNDS' in line:
+            aline = split_lines[i+1].split()
+            bline = split_lines[i+2].split()
+            cline = split_lines[i+3].split()
+            # hi - lo
+            lattice_vectors[0,0] = float(aline[1]) - float(aline[0])
+            lattice_vectors[1,1] = float(bline[1]) - float(bline[0])
+            lattice_vectors[2,2] = float(cline[1]) - float(cline[0])
+        
+            all_lattice_vectors.append(lattice_vectors.copy())
+    
+        
+        if 'ITEM: ATOMS' in line:
+            atomic_positions = np.zeros(shape=(num_atoms,3))
+            types = np.zeros(shape=(num_atoms))
+            line_split = line.split()
+            
+            args = line_split[2:]
+            
+            id_index = args.index('id')
+            type_index = args.index('type')
+            x_index = args.index('x')
+            y_index = args.index('y')
+            z_index = args.index('z')
+            
+            for atom in range(0,num_atoms):
+                atom_line_split = split_lines[i+atom+1].split()
+                types[atom] = int(atom_line_split[type_index]) 
+                
+                atomic_positions[atom,0] = float(atom_line_split[x_index]) / lattice_vectors[0,0]
+                atomic_positions[atom,1] = float(atom_line_split[y_index]) / lattice_vectors[1,1]
+                atomic_positions[atom,2] = float(atom_line_split[z_index]) / lattice_vectors[2,2]
+                
+            # as required by vasp, must be type sorted. 
+            types_sorted = np.argsort(types)
+            types,type_counts = np.unique(types,return_counts=True)
+            num_types = np.max(types)
+            all_atomic_positions.append(atomic_positions[types_sorted])
+
+    for i in types:
+        type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
+        
+    configs: list[Atoms] = []
+    for i in range(num_snapshots):
+        config = Atoms(symbols=type_labels,positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
+        configs.append(config)
+        
+    return configs
+
+
+def write_lammps_bash_command(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
+    '''
+    Generates the command line to run a set of lammps directories.
+    '''
+
+    dirs = ''
+    for dir in lammps_dirs:
+        dirs += f'{dir} '
+        
+    input_path = list(Path(dir).glob('in.*'))[0]
+    input_name = input_path.name
+       
+    output_name = 'out.' + input_name.split(".")[1]
+    result = f'directories="{dirs}"\n'
+    result += f'cd {output_directory}\n'
+    result+=f'''for i in $directories; 
+do 
+cd $i
+{lammps_cmd_line} -i {input_name} -l {output_name}
+cd -
+done\n'''
+    result += 'cd ..'
+    
+    return result
 
 
 def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -> list[str]:
@@ -44,7 +169,7 @@ def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -
     '''
     
     build = lammpsBuild(f'{base_dir}',variables)
-    build.read_directory()
+    build.read_base_directory()
     build.generate_calculations(outdir=outdir)
     return build.new_dirs
 
@@ -74,7 +199,7 @@ class lammpsBuild():
         return None
 
         
-    def read_directory(self) -> None:
+    def read_base_directory(self) -> None:
         '''
         Reads files and errors if base directory does not have the correct format for constructing multiple directories.
         
@@ -86,7 +211,6 @@ class lammpsBuild():
             if multiple in.* or *.dat files are found
         NameError:
             if a key in variables cannot be found in *.in
-        
         '''
         
         self.input_files = list(Path(self.lammps_base_dir).glob('in.*'))
@@ -120,14 +244,17 @@ class lammpsBuild():
         return None
     
     
-    def generate_calculations(self, label: str='lammps', outdir: str='.'):
+    def generate_calculations(self, label: str='lammps', outdir: str='.') -> None:
+        '''
+        Given variables and a base directory, a set of new calculation directories are generated.
+        '''
         
         new_input_files = []
         new_dir_names = []
         all_values = list(self.variables.values())
         
         if self.input is None:
-            self.read_directory()
+            self.read_base_directory()
         
         # If multiple variables we need to specify all possible combinations 
         for combination in product(*all_values):
@@ -158,9 +285,9 @@ class lammpsBuild():
             
             self.__write_calculation__(new_dir_name,new_input_str,outdir)
             
+        return None
             
-
-                    
+                
     def __write_calculation__(self, calc_name: str, input_str: str, outdir: str) -> None:
         '''
         Given a base directory (self), calculation name and lammps input file string, a new calculation is written.
@@ -170,7 +297,6 @@ class lammpsBuild():
     
         new_dir = outdir + '/' + calc_name 
         self.new_dirs.append(new_dir)
-        
         shutil.copytree(self.lammps_base_dir, new_dir ,dirs_exist_ok=True)
             
         with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
@@ -179,204 +305,3 @@ class lammpsBuild():
         print(f'Caculation directory generated: {outdir}/{new_dir}')
         
         return None
-        
-        
-        
-    def generate_bash_command(self,lammps_cmd_line: str):
-        
-        dirs = ''
-        for dir in self.new_dir_names:
-            dirs += f'{dir} '
-            
-        output_name = 'out.' + self.input_file_name.split(".")[1]
-        
-        
-        result = f'directories="{dirs}"\n'
-        
-        result += f'cd {self.lammps_output_dir}\n'
-        
-        result+=f'''for i in $directories; 
-do 
-cd $i
-    {lammps_cmd_line} -i {self.input_file_name} -l {output_name}
-cd ..
-done\n'''
-        result += 'cd ..'
-
-        
-        return result
-
-    
-    def add_variable_to_base(self, name: str, vals: np.ndarray, decimals: int=0):
-        
-        new_var = f'£{name} '
-    
-        for val in vals:
-            if decimals==0: decimals=None
-            new_var += f'{round(val,decimals)}'
-        
-        with open(self.lmps_input[0],'a') as f:
-            f.write('\n')
-            f.write(new_var)
-        
-    
-
-#base_dir = sys.argv[1]
-#out_dir = sys.argv[2]
-
-#test = contructLAMMPS(f'./{base_dir}')
-#test.fetch_variables()
-#test.set_variables()
-#test.generate_outputs(output_directory=f"./{out_dir}")
-
-
-
-def write_lammps_bash_command(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
-    '''
-    Generates the command line to run a set of lammps directories.
-    '''
-
-    dirs = ''
-    for dir in lammps_dirs:
-        dirs += f'{dir} '
-        
-    input_path = list(Path(dir).glob('in.*'))[0]
-    input_name = input_path.name
-    
-        
-    output_name = 'out.' + input_name.split(".")[1]
-    
-    result = f'directories="{dirs}"\n'
-    
-    result += f'cd {output_directory}\n'
-    
-    result+=f'''for i in $directories; 
-do 
-cd $i
-{lammps_cmd_line} -i {input_name} -l {output_name}
-cd -
-done\n'''
-    result += 'cd ..'
-
-    
-    return result
-    
-
-def read_lammps_output(output_dir: str, atom_types: list[str], pbc: bool=True) -> list[Atoms]:
-    '''
-    Read lammps *md output file.
-    '''
-    
-    output_dir = list(Path(output_dir).glob('md.*'))
-        
-    
-    md_output = open(output_dir[0],'r').read()
-    
-    
-    split_lines = md_output.splitlines()
-    
-    timesteps = [] # snapshot time steps.
-    all_atomic_positions = [] 
-    all_lattice_vectors = []
-    type_labels = []
-    
-    num_snapshots = md_output.count('ITEM: TIMESTEP')
-    num_atoms = int(split_lines[split_lines.index('ITEM: NUMBER OF ATOMS') + 1])
-    
-    #atom_information_string = split_lines[split_lines.index('')]
-    
-    lattice_vectors = np.zeros((3,3))
-        
-    for i,line in enumerate(split_lines):
-        
-        if 'ITEM: TIMESTEP' in line:
-            
-            timesteps.append(split_lines[i+1])
-
-        if 'ITEM: BOX BOUNDS' in line:
-                    
-            aline = split_lines[i+1].split()
-            bline = split_lines[i+2].split()
-            cline = split_lines[i+3].split()
-            
-            # hi - lo
-            lattice_vectors[0,0] = float(aline[1]) - float(aline[0])
-            lattice_vectors[1,1] = float(bline[1]) - float(bline[0])
-            lattice_vectors[2,2] = float(cline[1]) - float(cline[0])
-            
-
-            all_lattice_vectors.append(lattice_vectors.copy())
-    
-        
-        if 'ITEM: ATOMS' in line:
-            
-            atomic_positions = np.zeros(shape=(num_atoms,3))
-            
-            types = np.zeros(shape=(num_atoms))
-            
-            line_split = line.split()
-            
-            args = line_split[2:]
-            
-            id_index = args.index('id')
-            type_index = args.index('type')
-            x_index = args.index('x')
-            y_index = args.index('y')
-            z_index = args.index('z')
-            
-            for atom in range(0,num_atoms):
-        
-                atom_line_split = split_lines[i+atom+1].split()
-
-                types[atom] = int(atom_line_split[type_index]) 
-                
-                atomic_positions[atom,0] = float(atom_line_split[x_index]) / lattice_vectors[0,0]
-                atomic_positions[atom,1] = float(atom_line_split[y_index]) / lattice_vectors[1,1]
-                atomic_positions[atom,2] = float(atom_line_split[z_index]) / lattice_vectors[2,2]
-                
-            # as required by vasp, must be type sorted. 
-            types_sorted = np.argsort(types)
-
-            types,type_counts = np.unique(types,return_counts=True)
-        
-            num_types = np.max(types)
-            
-            all_atomic_positions.append(atomic_positions[types_sorted])
-
-    
-    for i in types:
-        type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
-        
-        
-    configs: list[Atoms] = []
-    for i in range(num_snapshots):
-        config = Atoms(symbols=type_labels,positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
-        configs.append(config)
-        
-    return configs
-
-
-
-'''
-
-
-Automatically set's up a LAMMPS calculation, snapshots of this calculation are used for DFT caclulations. 
-
-The user provides a 'base directory' including:
-
-    - The input file
-        - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
-        - (Option) A mlipts specific variable marked with £
-        
-    - The .dat file containing atomic positions
-    
-    - Note that all contents of the base directory will be copied. 
-    
-The user also provides a pytrain 'variational input file', this file includes additional lines of a LAMMPS input file to loop through. 
-
-Notes:
-
-- lmps shorthand for LAMMPS
-- if multiple variables are specified it will generate N_var1 * N_var2 directories.
-
-'''
