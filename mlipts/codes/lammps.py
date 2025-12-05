@@ -235,8 +235,7 @@ class lammpsBuild():
         self.input = "\n".join(in_no_com)
         
         variables_in_file = list(set(re.findall(r"£\S+", self.input)))
-        print(variables_in_file)
-        
+
         for i in self.variable_keys:
             if i not in variables_in_file:
                 raise NameError(f'Variable {i} in input dictionary not found in lammps input file (in.*)')
@@ -266,7 +265,7 @@ class lammpsBuild():
             for i, val in enumerate(combination):
                 # label new calculation directory
                 var_name = self.variable_keys[i][1:] # assumes first character is £
-                new_dir_name += f'_{var_name}_{val}'
+                new_dir_name += f'_{str(var_name).replace("£","")}_{round(val,None)}'
                 current_variables[self.variable_keys[i]] = val
                 
             #now define new str for this combination 
