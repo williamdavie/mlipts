@@ -1,10 +1,10 @@
 
 
-# Machine Learned Interatomic Potentials - Training Suite (MLIPTS).
+# Machine Learned Interatomic Potentials - Training Suite.
 
-Seemless data collection for training/fine-tuning machine learned interatomic potentials. 
+MLIPTS is a python package for training/fine-tuning machine learned interatomic potentials. 
 
-The key idea behind MLIPTS, is to perform the following active learning workflow with as little user input as possible:
+The key idea is to perform the following active learning workflow with as little user input as possible:
 
 <p align="center">
   <img src="https://github.com/williamdavie/mlipts/blob/docs-edit/media/active_learning_flowchart.png" width="50%" height="auto">
