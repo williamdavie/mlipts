@@ -75,12 +75,18 @@ def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T')
     
     #'Properties=species:S:1:pos:R:3:forces:R:3 energy=-1602.093208085042 pbc="T T T"
     
+    
+def append_to_database(calc_dir: str, database_file: str, code: str):
+    return None
 
 if __name__ == '__main__': 
+
     
-    vasp_calc = sys.argv[1]
+    calc_dir = sys.argv[1]
     
     database_file = sys.argv[2]
+    
+    code = sys.argv[3]
     
     append_vasp_calculation(vasp_calc,database_file)
     

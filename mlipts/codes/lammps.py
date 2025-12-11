@@ -43,8 +43,8 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
         list of atomic configurations fetched from dump file. Returned as a list of ase.Atoms types.
     '''
     
-    output_dir = list(Path(output_dir).glob('md.*'))
-    md_output = open(output_dir[0],'r').read()
+    outdir = list(Path(outdir).glob('md.*'))
+    md_output = open(outdir[0],'r').read()
     split_lines = md_output.splitlines()
     
     timesteps = [] # snapshot time steps.
@@ -114,7 +114,7 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
     return configs
 
 
-def write_lammps_bash_command(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
+def write_lammps_submission_script(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
     '''
     Generates the command line to run a set of lammps directories.
     '''
