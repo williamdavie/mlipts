@@ -60,7 +60,12 @@ Where ```MD_base``` and ```QM_base``` include the input files for molecular dyna
     └─ POTCAR
 ```
 
-Noting ```POSCAR``` is intentially missing as this is to be generated. The key to a successful data collection workflow is ensuring all files in the above are formatted correctly, as to collect a full dataset we will be calling each calculation many times. With a directory set up, mlipts allows simply following of the flow chart above: 
+Noting ```POSCAR``` is intentially missing as this is to be generated. 
+
+> [!TIP]
+> The key to a successful data collection workflow is ensuring all files in the above are formatted correctly, so it is recommend to test each _base_ directory. Collection of the full datase will be calling each calculation many times.  
+
+With a directory set up, mlipts allows simply following of the flow chart above: 
 
 1. Run many MD calculations:
 ```python
@@ -69,8 +74,13 @@ workflow.write_MD_submission_scripts(MD_cmd_line,submit=True)
 ```
 2. Filter new configurations from MD:
 ```python
-workflow.
+workflow.filter_active_MD(tol=0.1)
 ```
+where ```tol``` defines a tolerence to keep or remove a configuration, i.e. if the earth movers distance (emd) between two configurations is less than ```tol``` one of the configurations is dropped. 
+
+> [!NOTE]
+> The emd is calculated between each pair of configurations and therefore _can be_ costly.
+
 3. Run DFT calculations on new configurations
 ```python
 workflow.
