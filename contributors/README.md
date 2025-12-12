@@ -28,7 +28,12 @@ Areas for future developement.
 
 **DataCollection**
 
--
+- add save_and_remove for write_MD_submission_scripts
+
+**append_to_database**
+
+- options to append data of different boundry conditions.
+
 
 
 

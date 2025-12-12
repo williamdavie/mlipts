@@ -3,13 +3,14 @@
 
 File containing vasp specific functionality. Used to build many vasp calculations.
 
-some of these functions may be generalised if other codes are added e.g. write_vasp_submission_scipts
+some functionality may be generalised if other codes are added 
 '''
 
 from ase import Atoms
 from ase.io import read, write
 import numpy as np
 import shutil
+import py4vasp
 
 
 def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, outdir: str) -> str: 
@@ -43,7 +44,6 @@ def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, ou
     return new_calc_dir
 
 
-
 def write_POSCAR_str(config: Atoms) -> str:
     '''
     writes a POSCAR string given an atomic configuration.
@@ -70,3 +70,41 @@ def write_POSCAR_str(config: Atoms) -> str:
  
     return poscar
              
+        
+def append_vasp_calc_to_database(database_file: str, vasp_dir: str, pbc: str='T T T'):
+    
+    final_config = ''
+
+    try:
+        calc = py4vasp.Calculation.from_path(vasp_dir)
+        # fetch energy
+        energy_toten = calc.energy.to_dict()
+        eval = energy_toten['free energy    TOTEN']
+
+        # fetch force and structure data
+        force_data =  calc.force.to_dict()
+        elements = force_data['structure']['elements']
+        num_atoms = len(elements)
+
+        l_vecs = force_data['structure']['lattice_vectors']
+        lattice_str = f'Lattice="{l_vecs[0,0]} {l_vecs[0,1]} {l_vecs[0,2]} {l_vecs[1,0]} {l_vecs[1,1]} {l_vecs[1,2]} {l_vecs[2,0]} {l_vecs[2,1]} {l_vecs[2,2]}"'
+        atomic_positions = force_data['structure']['positions']
+    
+        forces = force_data['forces']
+        final_config += f'{num_atoms}\n'
+        final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces_xtb:R:3 energy_xtb={eval} pbc="{pbc}"\n'
+    
+        for i in range(0,num_atoms):
+            # convert to cartiesian
+            species = elements[i]
+            position = atomic_positions[i][0] * l_vecs[0] + atomic_positions[i][1] * l_vecs[1] + atomic_positions[i][2] * l_vecs[2]
+            force = forces[i] # possibly a conversion required.
+            final_config += f'{species} {position[0]} {position[1]} {position[2]} {force[0]} {force[1]} {force[2]}\n'
+        
+        with open(database_file,'a') as f:
+            f.write(final_config)
+            
+    except Exception as e:
+        print(f'The calculation under {vasp_dir} did not failed or did not finish.')
+        print(e)
+        return None

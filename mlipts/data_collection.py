@@ -5,7 +5,7 @@
 Main class for collecting a data set for model training/fine-tuning. 
 '''
 
-from mlipts.codes.lammps import build_lammps_calculations, write_lammps_submission_script, read_lammps_output
+from mlipts.codes.lammps import build_lammps_calculations, read_lammps_output
 from mlipts.codes.vasp import build_vasp_calculation
 from mlipts.hpc_submission.archer2 import archer2_submission_template
 from mlipts.similarity.filter import filter_by_emd
@@ -13,12 +13,7 @@ from ase import Atoms
 from ase.io import read, write
 from pathlib import Path
 import subprocess
-
-
-__hpcs__ = ['archer2','custom']
-__MDcodes__ = ['lammps']
-__QMcodes__ = ['vasp']
-__diffmethods__ = ['emd']
+from mlipts.constants import __hpcs__,__diffmethods__,__MDcodes__,__QMcodes__
 
 
 class DataCollection():
@@ -92,6 +87,8 @@ class DataCollection():
                                    time: str,
                                    MDcode: str='lammps',
                                    hpc: str='archer2',
+                                   npartitions: int=1,
+                                   scripts_outdir: str='./MD_scripts',
                                    submit: bool=True,
                                    mark_as_active: bool=True,
                                    header_str: str=None):
@@ -126,17 +123,18 @@ class DataCollection():
         if MDcode not in __MDcodes__:
             raise ValueError(f'MD code {MDcode} not supported.')
         
-        cmd_scipts = write_run_calculation_scripts(self.initialized_MD_dirs,MD_cmd_line) # leaving as one partition as default for now but more partitions possible easy addition.
+        cmd_scipts = write_run_calculation_scripts(self.initialized_MD_dirs,MD_cmd_line,npartitions=npartitions) # leaving as one partition as default for now but more partitions possible easy addition.
+        Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
-            with open (f'MD_submission_script_#{i}','w') as f:
+            with open (f'{scripts_outdir}/MD_submission_script_#{i}','w') as f:
                 f.write(header)
                 f.write('\n')
                 f.write(cmd)
-            
-            print(f'MD submission script saved to: MD_submission_script_#{i}')
+                
+            print(f'MD submission script saved to: {scripts_outdir}/MD_submission_script_#{i}')
             
             if submit:
-                subprocess.run(f'sbatch MD_submission_script_#{i}',shell=True)
+                subprocess.run(f'sbatch {scripts_outdir}/MD_submission_script_#{i}',shell=True)
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
@@ -171,7 +169,7 @@ class DataCollection():
         '''
         
         if not self.active_MD_configs:
-            self.fetch_active_MD_from_calcs()
+            self.fetch_MD_configs_from_calcs()
         
         if method == 'emd':
             new_configs, inds = filter_by_emd(self.active_MD_configs,tol,k=k,show_dendrograms=show_dendrograms)
@@ -200,7 +198,7 @@ class DataCollection():
         Parameters
         ----------
         QM_base_dir: str
-            directory containing necessary files for a QM calculations except atomic position information, which will be taken from active configs.
+            directory containing necessary files for a QM calculations except atomic position information, which will be taken from active MD calculations.
         QMcode: str
             code used. Default is vasp.    
             
@@ -211,7 +209,7 @@ class DataCollection():
         '''
         
         if not self.active_MD_configs:
-            self.fetch_active_MD_from_calcs()
+            self.fetch_MD_configs_from_calcs()
             
         print(f'Number of active configs = number of QM calculation directories = {len(self.active_MD_configs)}')
         
@@ -227,7 +225,7 @@ class DataCollection():
         
         return None
     
-    def write_QM_submission_script(self, QM_cmd_line: str,
+    def write_QM_submission_scripts(self, QM_cmd_line: str,
                                    nodes: int, ranks: int,
                                    time: str,
                                    npartitions: int=1,
@@ -237,6 +235,7 @@ class DataCollection():
                                    database_file: str=None,
                                    hpc: str='archer2',
                                    scripts_outdir: str='./QMscripts',
+                                   submit: bool=True,
                                    header_str: str=None,
                                    mark_as_active: bool=True):
         '''
@@ -250,15 +249,24 @@ class DataCollection():
         ranks: int
         time: str
             run time formated as "XX:XX:XX"
-        Qmcode : str
+        QMcode : str
             QM code of choice
         hpc : str
             hpc of choice for header of submission script.
+        python_env: str
+            path to python enviroment
+        database_file: str
+            path to file to store data.
+        
         
         Returns
         -------
         None : None
             generates QM_submission_script_#i in the working directory.
+            
+        Raises
+        ------
+        see write_run_calculation_scripts()
         
         '''
         
@@ -273,13 +281,16 @@ class DataCollection():
                                                    npartitions=npartitions,
                                                    save_and_remove=save_and_remove,
                                                    python_env=python_env,code=QMcode,database_file=database_file)
+        Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
-            Path(scripts_outdir).mkdir(exist_ok=True)
             with open (f'{scripts_outdir}/QM_submission_script_#{i}','w') as f:
                 f.write(header)
                 f.write('\n')
                 f.write(cmd)
             print(f'MD submission script saved to: {scripts_outdir}/QM_submission_script_#{i}')
+            if submit:
+                subprocess.run(f'sbatch {scripts_outdir}/QM_submission_script_#{i}',shell=True)
+        
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
@@ -288,7 +299,7 @@ class DataCollection():
         return None
 
     
-    def fetch_active_MD_from_calcs(self):
+    def fetch_MD_configs_from_calcs(self):
         '''
         Collect the atomic configs from the active MD directories
         '''
@@ -301,7 +312,23 @@ class DataCollection():
         return self.active_MD_configs
     
     
-    def add_active_MD_configs(self,
+    def set_active_MD_dirs(self, outdir: str='./MD_calculations') -> None:
+        '''
+        Set MD calculation directories manually.
+        '''
+        
+        old_len = len(self.active_MD_dirs)
+        path = Path(outdir)
+        subdirs = [p for p in path.iterdir() if p.is_dir()]
+        for calc in subdirs:
+            if calc not in self.active_MD_dirs:
+                self.active_MD_dirs.append(str(calc))
+                
+        print(f'Number of active MD directories updated from {old_len} to {len(self.active_MD_dirs)}')
+        
+        return None
+    
+    def set_active_MD_configs(self,
                               config_file: str) -> None:
         '''
         Adds configurations in config_file to self.active_MD_configs.
@@ -323,7 +350,7 @@ class DataCollection():
         print(self.initialized_MD_dirs)
         
     
-    def __check_active_MD__(self):
+    def check_active_MD(self):
         '''
         prints active MD directories
         '''
