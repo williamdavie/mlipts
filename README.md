@@ -27,7 +27,7 @@ pip install mlipts
 
 ### Capability
 
-```1.0.0``` is built to address the creation of an inital data set (Part 1 of the workflow above), however, note part of the current functionality is applicable across the main workflow, ultimately arriving at the following reduced workflow to address:
+```0.1.0``` is built to address the creation of an inital data set (Part 1 of the workflow above), however, note part of the current functionality is applicable across the main workflow, ultimately arriving at the following reduced workflow to address:
 
 <p align="center">
   <img src="https://github.com/williamdavie/mlipts/blob/docs-edit/media/workflow_%231.png" width="50%" height="auto">
