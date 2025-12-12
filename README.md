@@ -1,7 +1,7 @@
 
 
 # Machine Learned Interatomic Potentials - Training Suite.
-<img src="https://img.shields.io/badge/version-1.0.0-blue"> <img src="https://img.shields.io/badge/contributors-welcome-green">
+<img src="https://img.shields.io/badge/version-0.1.0-blue"> <img src="https://img.shields.io/badge/contributors-welcome-green">
 
 
 MLIPTS is a python package for training/fine-tuning machine learned interatomic potentials. 
@@ -16,7 +16,7 @@ The key idea is to perform the following active learning workflow with as little
 > The scope of a fully-fledged python package to perform seemless MLIP training is significant, with many availible MD and DFT/Quantum Chemistry codes and ways to quantify data quality.
 > Contributors are welcome to help make this goal a reality.
 
-## Version 1.0.0
+## Version 0.1.0
 
 ### Installation
 
