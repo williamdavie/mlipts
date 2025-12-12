@@ -120,9 +120,3 @@ def collapse(D: np.ndarray,tol: int=3) -> np.ndarray:
     
     
     return D_unique
-    
-    
-    
-if __name__ == '__main__':
-    
-    pass

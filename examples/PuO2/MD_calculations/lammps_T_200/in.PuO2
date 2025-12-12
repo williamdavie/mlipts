@@ -1,0 +1,43 @@
+
+boundary p p p
+atom_style full
+units metal
+
+read_data puo2.dat
+
+
+set type 1 charge -1.1104
+set type 2 charge 2.2208
+
+
+kspace_style pppm 1.0e-5
+pair_style hybrid/overlay coul/long 11.0 eam/fs
+pair_coeff * * coul/long
+pair_coeff * * eam/fs LAMMPS_PuO2.fs O Pu
+
+fix boxrelax_fix all box/relax aniso 0.0 vmax 0.001
+thermo 1
+thermo_style custom step cpu press etotal lx cella cellb cellc cellalpha cellbeta cellgamma
+min_style sd
+min_modify line quadratic dmax 0.05
+minimize 1.0e-25 1.0e-25 1000 10000
+unfix boxrelax_fix
+
+replicate 1 1 1
+
+dump dumpall all custom 1000 md.lammpstrj id type x y z
+
+velocity all create 300 160278
+timestep 0.002
+
+
+
+fix thermostat_fix all npt temp 200 200 0.1 iso 0.0 0.0 0.5
+
+thermo_style custom step temp press pe ke etotal lx ly lz
+thermo 10
+
+neigh_modify delay 0 every 1 check yes
+
+
+run 5000

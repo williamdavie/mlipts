@@ -1,9 +1,9 @@
-
-
 import re
+
 def archer2_submission_template(nodes: int, ranks: int, time: str, account='e89-camm'):
     
-    assert re.match(r'^\d{2}:\d{2}:\d{2}$', time), 'Time must have format XX:XX:XX'
+    if not re.match(r'^\d{2}:\d{2}:\d{2}$', time):
+        raise ValueError('Time must have format XX:XX:XX')
     
     hours, minutes, seconds = time.split(":")
     

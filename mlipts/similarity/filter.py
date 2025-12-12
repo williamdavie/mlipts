@@ -1,7 +1,8 @@
 '''
-
 @author William Davie
 
+filter functions 
+future improvements include additional filter methods and optimization.
 '''
 
 from ase import Atoms

@@ -1,0 +1,36 @@
+
+## Contribution Notes
+
+Areas for future developement.
+
+### Future versions
+
+- Development of active learning workflow.
+
+### Version 1
+
+**codes**
+
+- Add supported MD and QM codes.
+
+**similarity**
+
+- Add additional descriptors to access similarity of configurations. e.g. 
+    - SOAP
+    - 
+- Optimize with numba
+
+
+**hpc_submission**
+
+- Add supported hpcs.
+- Support for cunstructing a custom script header
+
+**DataCollection**
+
+-
+
+
+
+
+

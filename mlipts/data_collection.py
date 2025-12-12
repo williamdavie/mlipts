@@ -12,6 +12,7 @@ from mlipts.similarity.filter import filter_by_emd
 from ase import Atoms
 from ase.io import read, write
 from pathlib import Path
+import subprocess
 
 
 __hpcs__ = ['archer2','custom']
@@ -86,15 +87,16 @@ class DataCollection():
         
         return None
     
-    def build_MD_submission_script(self, MD_cmd_line: str,
+    def write_MD_submission_scripts(self, MD_cmd_line: str,
                                    nodes: int, ranks: int,
                                    time: str,
                                    MDcode: str='lammps',
                                    hpc: str='archer2',
+                                   submit: bool=True,
                                    mark_as_active: bool=True,
                                    header_str: str=None):
         '''
-        Build submission script for Molecular Dynamics simulations, built for all directories marked 'incomplete'. 
+        write submission script for Molecular Dynamics simulations, built for all directories marked 'initialized'. 
         
         Parameters
         ----------
@@ -108,6 +110,8 @@ class DataCollection():
             MD code of choice
         hpc : str
             hpc of choice for header of submission script.
+        submit: bool
+            automatically sbatch the script. 
         
         Returns
         -------
@@ -130,10 +134,14 @@ class DataCollection():
                 f.write(cmd)
             
             print(f'MD submission script saved to: MD_submission_script_#{i}')
+            
+            if submit:
+                subprocess.run(f'sbatch MD_submission_script_#{i}',shell=True)
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
             self.initialized_MD_dirs = []
+
       
         return None
     
@@ -219,7 +227,7 @@ class DataCollection():
         
         return None
     
-    def build_QM_submission_script(self, QM_cmd_line: str,
+    def write_QM_submission_script(self, QM_cmd_line: str,
                                    nodes: int, ranks: int,
                                    time: str,
                                    npartitions: int=1,
@@ -258,6 +266,8 @@ class DataCollection():
         header = fetch_hpc_header(hpc,header_str,nodes,ranks,time)
         
         #cmd
+        if QMcode not in __QMcodes__:
+            raise ValueError(f'QM code {QMcode} not supported')
         cmd_scipts = write_run_calculation_scripts(self.initialized_QM_dirs,
                                                    QM_cmd_line,
                                                    npartitions=npartitions,
@@ -313,12 +323,13 @@ class DataCollection():
         print(self.initialized_MD_dirs)
         
     
-    def __check_active__(self):
+    def __check_active_MD__(self):
         '''
         prints active MD directories
         '''
         print('MD directories currently active: ')
-        print(self.active_MD)
+        print(self.active_MD_dirs)
+        print('Num active: ', len(self.active_MD_dirs))
         
     def __save_active__(self, outname: str):
         
@@ -408,12 +419,12 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         
         script = ''
 
-        current_dirs = ''
+        current_dirs=''
         for dir in calc_dirs[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
-            current_dirs += f'{dir} '
+            current_dirs+=f'{dir} '
         
-        script += f'directories="{current_dirs}"\n'
-        script +=f'''for i in $directories; 
+        script+=f'directories="{current_dirs}"\n'
+        script+=f'''for i in $directories; 
 do 
 cd $i
 {cmd_line}

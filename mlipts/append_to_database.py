@@ -1,27 +1,24 @@
 '''
 
-@Author William Davie
+@author William Davie
 
-With a VASP-DFT (or other-future versions) calculation done, we now want to append positions, energies and forces to the training database.
+With a calculation done, we now want to append positions, energies and forces to the training database.
 
-py4vasp makes this very straightforward. 
-
-Developer notes: 
-
-- Formated for MACE, details on data format:  https://github.com/ilyes319/mace-tutorials
-
-- Currently only supports a periodic lattice
-
-- Assumes all configs have same periodic boundry conditions.
-
-
-Now __main__ is vasp specific - will need to alter if other codes added in future. 
-
+Formated for MACE, details on data format:  https://github.com/ilyes319/mace-tutorials
 '''
 
 import py4vasp
 import numpy as np
 import sys,os
+
+__QMcodes__ = ['vasp']
+__MDcodes__ = ['']
+
+def append_to_database(database_file: str, calc_dir: str, code: str='vasp', forces: bool=True, pbc: str='T T T'):
+    '''
+    Given a calculation in directory calc_dir, read positions and forces and 
+    '''
+    return None
 
 def append_vasp_calculation(vasp_dir: str, database_file: str, pbc: str='T T T'):
     

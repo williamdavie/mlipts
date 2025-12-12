@@ -1,2 +1,2 @@
 
-A selection of submission script templates.
+hpc submission script headers
