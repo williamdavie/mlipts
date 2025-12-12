@@ -1,8 +1,7 @@
 
 
 # Machine Learned Interatomic Potentials - Training Suite.
-<img src="https://img.shields.io/badge/version-0.1.0-blue"> <img src="https://img.shields.io/badge/contributors-welcome-green">
-
+<img src="https://img.shields.io/badge/version-0.1.0-blue">
 
 MLIPTS is a python package for training/fine-tuning machine learned interatomic potentials. 
 
@@ -83,14 +82,9 @@ where ```tol``` defines a tolerence to keep or remove a configuration, i.e. if t
 
 3. Run DFT calculations on new configurations
 ```python
-workflow.
+workflow.write_QM_submission_scripts(QM_cmd_line,save_and_remove=True,submit=True)
 ```
-4. Save to a training data set. 
-```python
-workflow.
-```
-
-
+where ```save_and_remove``` is an option to save the data from each QM calculation while running. Its default is True.
 
 The final workflow will then appear as:
 ```
@@ -104,12 +98,4 @@ collect_data/
 ├─ workflow.ipynb
 └─ training_data.xyz
 ```
-
-
-
-
-
-
-
-
 
