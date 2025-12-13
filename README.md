@@ -1,7 +1,7 @@
 
 
 # Machine Learned Interatomic Potentials - Training Suite (MLIPTS).
-<img src="https://img.shields.io/badge/version-0.1.0-blue">
+[![PyPI](https://badge.fury.io/py/mlipts.svg)](https://badge.fury.io/py/mlipts)
 
 MLIPTS is a python package for training/fine-tuning machine learned interatomic potentials. 
 
