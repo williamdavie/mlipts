@@ -17,7 +17,7 @@ Dynamic: license-file
 
 
 # Machine Learned Interatomic Potentials - Training Suite (MLIPTS).
-<img src="https://img.shields.io/badge/version-0.1.0-blue">
+[![PyPI](https://badge.fury.io/py/mlipts.svg)](https://badge.fury.io/py/mlipts)
 
 MLIPTS is a python package for training/fine-tuning machine learned interatomic potentials. 
 
@@ -53,7 +53,7 @@ The MD code supported is ```LAMMPS``` and DFT code supported is ```VASP```, wher
 
 ### Usage
 
-It is highly recommended to follow the availible example at (insert link to example). 
+It is highly recommended to follow the availible example at [PuO2_example](https://github.com/williamdavie/mlipts/tree/master/examples/PuO2). 
 
 The working directory is set up in the following way:
 ```
