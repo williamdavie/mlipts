@@ -1,2 +1,6 @@
+build
+contributing
+dist
 examples
+media
 mlipts

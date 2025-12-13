@@ -1,6 +1,4 @@
 
-## Contribution Notes
-
 Areas for future developement.
 
 ### Future versions
@@ -25,6 +23,7 @@ Areas for future developement.
 
 - Add supported hpcs.
 - Support for cunstructing a custom script header
+- generalise writing hpc scripts for SLURM, i.e. include repeated headers
 
 **DataCollection**
 

@@ -91,7 +91,8 @@ class DataCollection():
                                    scripts_outdir: str='./MD_scripts',
                                    submit: bool=True,
                                    mark_as_active: bool=True,
-                                   header_str: str=None):
+                                   header_str: str=None,
+                                   hpc_account: str=None):
         '''
         write submission script for Molecular Dynamics simulations, built for all directories marked 'initialized'. 
         
@@ -117,7 +118,7 @@ class DataCollection():
         
         '''
         # header
-        header = fetch_hpc_header(hpc,header_str,nodes,ranks,time)
+        header = fetch_hpc_header(hpc,header_str,nodes,ranks,time,hpc_account)
         
         # cmds
         if MDcode not in __MDcodes__:
@@ -234,6 +235,7 @@ class DataCollection():
                                    python_env: str=None,
                                    database_file: str=None,
                                    hpc: str='archer2',
+                                   hpc_account: str=None,
                                    scripts_outdir: str='./QMscripts',
                                    submit: bool=True,
                                    header_str: str=None,
@@ -271,7 +273,7 @@ class DataCollection():
         '''
         
         # header
-        header = fetch_hpc_header(hpc,header_str,nodes,ranks,time)
+        header = fetch_hpc_header(hpc,header_str,nodes,ranks,time,hpc_account)
         
         #cmd
         if QMcode not in __QMcodes__:
@@ -366,13 +368,14 @@ class DataCollection():
 def fetch_hpc_header(hpc: str, header_str: str, 
                              nodes: int=1,
                              ranks: int=1,
-                             time: str='01:00:00') -> str:
+                             time: str='01:00:00',
+                             hpc_account: str=None) -> str:
     '''
     Given some hpc parameters returns the header of a submission script. 
     '''
 
     if hpc == 'archer2':
-        header = archer2_submission_template(nodes,ranks,time)
+        header = archer2_submission_template(nodes,ranks,time,account=hpc_account)
     elif hpc == 'custom':
         if header_str == None:
             raise ValueError('custom hpc header but no header_str argument provided.')

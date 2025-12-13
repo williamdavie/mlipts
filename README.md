@@ -35,7 +35,7 @@ pip install mlipts
 
 The MD code supported is ```LAMMPS``` and DFT code supported is ```VASP```, where the earth movers distance (EMD) has been implemented to filter configurations. The details of this method are found at [1] and [average-minimum-distance](https://github.com/dwiddo/average-minimum-distance) (Copyright (C) 2025 Daniel Widdowson).
 
-### Quickstart
+### Usage
 
 It is highly recommended to follow the availible example at (insert link to example). 
 

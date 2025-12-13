@@ -1,0 +1,21 @@
+#!/bin/bash
+
+#SBATCH --job-name=job_MLIPTS
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=128
+#SBATCH --cpus-per-task=1
+#SBATCH --time=02:30:00
+
+#SBATCH --account=my_account
+#SBATCH --partition=standard
+#SBATCH --qos=standard
+    
+directories="./QM_calculations/VASP_c_#6 ./QM_calculations/VASP_c_#7 ./QM_calculations/VASP_c_#8 "
+for i in $directories; 
+do 
+cd $i
+srun --hint=nomultithread --distribution=block:block /vasp.6.5.0/bin/vasp_ncl
+cd -
+path/to/python_env/bin/python -m mlipts.append_to_database $i training_data.xyz vasp
+rm -r $i
+done

@@ -3,7 +3,7 @@ boundary p p p
 atom_style full
 units metal
 
-read_data puo2.dat
+read_data PuO2.dat
 
 # set charges - Cooper potential
 set type 1 charge -1.1104
@@ -13,7 +13,7 @@ set type 2 charge  2.2208
 kspace_style pppm 1.0e-5
 pair_style hybrid/overlay coul/long 11.0 eam/fs
 pair_coeff   *    *    coul/long
-pair_coeff   *    *    eam/fs LAMMPS_PuO2.fs O Pu
+pair_coeff   *    *    eam/fs /path/to/potential/LAMMPS_CRG_PuO2.fs O Pu
 
 fix boxrelax_fix all box/relax aniso 0.0 vmax 0.001
 thermo 1

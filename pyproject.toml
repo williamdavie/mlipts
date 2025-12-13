@@ -1,9 +1,23 @@
 [project]
 name = "mlipts"
-version = "1.0.0"
-description = "MLIPTS: Machine Learning Interatomic Potentials Training Suite"
+version = "0.1.0"
+description = "Machine Learning Interatomic Potentials Training Suite"
+authors = [
+  {name = "William Davie", email = "willdavie2002@gmail.com"}
+]
+
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
+
+dependencies = [
+    "ase",
+    "py4vasp",
+    "numpy",
+    "scipy",
+    "matplotlib",
+]
+
+license = {text = "MIT"}
 
 [tool.setuptools]
 package-dir = {"" = "."}
