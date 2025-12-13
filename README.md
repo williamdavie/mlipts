@@ -37,7 +37,7 @@ The MD code supported is ```LAMMPS``` and DFT code supported is ```VASP```, wher
 
 ### Usage
 
-It is highly recommended to follow the availible example at (insert link to example). 
+It is highly recommended to follow the availible example at [PuO2_example](https://github.com/williamdavie/mlipts/tree/master/examples/PuO2). 
 
 The working directory is set up in the following way:
 ```
