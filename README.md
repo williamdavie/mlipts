@@ -87,7 +87,7 @@ workflow.write_QM_submission_scripts(QM_cmd_line,save_and_remove=True,submit=Tru
 where ```save_and_remove``` is an option to save the data from each QM calculation while running. Its default is True.
 
 > [!NOTE]
-> save and remove uses a python enviroment with mlipts installed _and_ utlizes py4vasp (requiring VASP version>6.2)
+> save and remove uses a python enviroment with mlipts installed _and_ utlizes py4vasp (requiring VASP version>6.2).
 
 The final workflow will then appear as,
 ```
@@ -107,14 +107,15 @@ and training_data_xyz can be passed into MACE [2] or reformatted for other MLIP 
 ### References
 
 [1] Jacobs, Ryan, et al. "A practical guide to machine learning interatomic potentials–Status and future." Current Opinion in Solid State and Materials Science 35 (2025): 101214.
+
 [2] Widdowson, Daniel, and Vitaliy Kurlin. "Pointwise distance distributions for detecting near-duplicates in large materials databases." arXiv preprint arXiv:2108.04798 (2021).
+
 [3] Batatia, Ilyes, et al. "MACE: Higher order equivariant message passing neural networks for fast and accurate force fields." Advances in neural information processing systems 35 (2022): 11423-11436.
 
 
 ### Contact
 
-William Davie,
-willdavie2002@gmail.com,
-Department of Material Science and Metallurgy, 
-University of Cambridge
+> William Davie, willdavie2002@gmail.com.
+>
+> Department of Material Science and Metallurgy, University of Cambridge.
 
