@@ -1,6 +1,6 @@
 [project]
 name = "mlipts"
-version = "0.1.0"
+version = "0.1.1"
 description = "Machine Learning Interatomic Potentials Training Suite"
 authors = [
   {name = "William Davie", email = "willdavie2002@gmail.com"}
