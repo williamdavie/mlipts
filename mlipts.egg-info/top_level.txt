@@ -1,4 +1,3 @@
-build
 contributing
 dist
 examples

@@ -1,15 +1,6 @@
 LICENSE
 README.md
 pyproject.toml
-./build/lib/mlipts/__init__.py
-./build/lib/mlipts/analysis.py
-./build/lib/mlipts/append_to_database.py
-./build/lib/mlipts/data_collection.py
-./build/lib/mlipts/test.py
-./build/lib/mlipts/codes/__init__.py
-./build/lib/mlipts/codes/lammps.py
-./build/lib/mlipts/codes/vasp.py
-./build/lib/mlipts/hpc_submission/archer2.py
 ./mlipts/__init__.py
 ./mlipts/append_to_database.py
 ./mlipts/constants.py
