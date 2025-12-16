@@ -2,17 +2,6 @@ LICENSE
 README.md
 pyproject.toml
 setup.py
-./build/lib/mlipts/__init__.py
-./build/lib/mlipts/append_to_database.py
-./build/lib/mlipts/constants.py
-./build/lib/mlipts/data_collection.py
-./build/lib/mlipts/codes/__init__.py
-./build/lib/mlipts/codes/lammps.py
-./build/lib/mlipts/codes/vasp.py
-./build/lib/mlipts/hpc_submission/archer2.py
-./build/lib/mlipts/similarity/emd.py
-./build/lib/mlipts/similarity/filter.py
-./build/lib/mlipts/similarity/pdd.py
 ./mlipts/__init__.py
 ./mlipts/append_to_database.py
 ./mlipts/constants.py
@@ -33,6 +22,8 @@ __pycache__/lammps.cpython-310.pyc
 __pycache__/training_workflow.cpython-310.pyc
 __pycache__/vasp.cpython-310.pyc
 contributing/README.md
+dist/mlipts-0.1.1-py3-none-any.whl
+dist/mlipts-0.1.1.tar.gz
 examples/PuO2/training_data.xyz
 examples/PuO2/workflow.ipynb
 examples/PuO2/MD_calculations/lammps_T_100/PuO2.dat

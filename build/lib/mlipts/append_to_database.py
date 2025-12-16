@@ -11,13 +11,13 @@ import sys,os
 from mlipts.constants import __MDcodes__,__QMcodes__
 from mlipts.codes.vasp import append_vasp_calc_to_database
 
-def append_to_database(database_file: str, calc_dir: str, code: str='vasp', forces: bool=True, pbc: str='T T T'):
+def append_to_database(database_file: str, calc_dir: str, code: str='vasp'):
     '''
     Given a calculation in directory calc_dir, read positions and forces and 
     '''
     
     if code == 'vasp':
-        append_vasp_calc_to_database(database_file,calc_dir,pbc=pbc)
+        append_vasp_calc_to_database(database_file,calc_dir)
     else:
         raise ValueError(f'code {code} not supported.')
     

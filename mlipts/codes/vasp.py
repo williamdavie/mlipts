@@ -23,7 +23,7 @@ def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, ou
         path to base directory, should contain POTCAR, KPOINTS and INCAR.
     config: :class:`ase.Atoms` 
         atomic configuration.
-    outname: str
+    outname: stls
         name of calculation directory
     outdir: str
         output path of calculation directory.
@@ -55,6 +55,7 @@ def write_POSCAR_str(config: Atoms) -> str:
     poscar += f' {cell[0,0]} {cell[0,1]} {cell[0,2]}\n {cell[1,0]} {cell[1,1]} {cell[1,2]}\n {cell[2,0]} {cell[2,1]} {cell[2,2]}\n'
     
     type_labels = config.symbols.species()
+
     for type in type_labels:
         poscar += f' {type} '
     poscar+='\n'
@@ -69,8 +70,15 @@ def write_POSCAR_str(config: Atoms) -> str:
         poscar+=f'{pos[0]} {pos[1]} {pos[2]}\n'
  
     return poscar
-             
-        
+
+
+def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
+    atoms = read(f"{vasp_dir}/vasprun.xml")
+    write(database_file, atoms, format="extxyz", append=True)
+    return None
+    
+
+'''        
 def append_vasp_calc_to_database(database_file: str, vasp_dir: str, pbc: str='T T T'):
     
     final_config = ''
@@ -108,3 +116,5 @@ def append_vasp_calc_to_database(database_file: str, vasp_dir: str, pbc: str='T 
         print(f'The calculation under {vasp_dir} did not failed or did not finish.')
         print(e)
         return None
+        
+'''

@@ -192,7 +192,7 @@ class DataCollection():
                               QM_base_dir: str, 
                               QMcode: str='vasp', 
                               outdir: str = './QM_calculations', 
-                              label: str='') -> None:
+                              label: str=None) -> None:
         '''
         For all active MD configs (self.active_MD_configs) a first principle calculation directory is generated.
         
@@ -208,6 +208,9 @@ class DataCollection():
         None: None
             new QM calculations generated in outdir. 
         '''
+        
+        if label==None:
+            label=QMcode
         
         if not self.active_MD_configs:
             self.fetch_MD_configs_from_calcs()
@@ -293,7 +296,6 @@ class DataCollection():
             if submit:
                 subprocess.run(f'sbatch {scripts_outdir}/QM_submission_script_#{i}',shell=True)
         
-        
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
             self.initialized_MD_dirs = []
@@ -365,9 +367,9 @@ class DataCollection():
         '''
         prints active MD configurations
         '''
-        print('MD configs currently active: ')
+        print('MD configurations currently active: ')
         print(self.active_MD_configs)
-        print('Num active directories: ', len(self.active_MD_configs))
+        print('Num active configurations: ', len(self.active_MD_configs))
         
     def __save_active__(self, outname: str):
         
