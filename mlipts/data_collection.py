@@ -344,7 +344,7 @@ class DataCollection():
         return None
 
     
-    def __check_initialized__(self):
+    def check_initialized_MD_dirs(self):
         '''
         prints initialized MD directories
         '''
@@ -352,13 +352,22 @@ class DataCollection():
         print(self.initialized_MD_dirs)
         
     
-    def check_active_MD(self):
+    def check_active_MD_dirs(self):
         '''
         prints active MD directories
         '''
         print('MD directories currently active: ')
         print(self.active_MD_dirs)
-        print('Num active: ', len(self.active_MD_dirs))
+        print('Num active directories: ', len(self.active_MD_dirs))
+        
+        
+    def check_active_MD_configs(self):
+        '''
+        prints active MD configurations
+        '''
+        print('MD configs currently active: ')
+        print(self.active_MD_configs)
+        print('Num active directories: ', len(self.active_MD_configs))
         
     def __save_active__(self, outname: str):
         

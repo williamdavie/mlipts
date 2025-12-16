@@ -33,8 +33,6 @@ __pycache__/lammps.cpython-310.pyc
 __pycache__/training_workflow.cpython-310.pyc
 __pycache__/vasp.cpython-310.pyc
 contributing/README.md
-dist/mlipts-0.1.0-py3-none-any.whl
-dist/mlipts-0.1.0.tar.gz
 examples/PuO2/training_data.xyz
 examples/PuO2/workflow.ipynb
 examples/PuO2/MD_calculations/lammps_T_100/PuO2.dat
