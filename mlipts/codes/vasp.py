@@ -54,8 +54,14 @@ def write_POSCAR_str(config: Atoms) -> str:
     cell = np.array(config.cell)
     poscar += f' {cell[0,0]} {cell[0,1]} {cell[0,2]}\n {cell[1,0]} {cell[1,1]} {cell[1,2]}\n {cell[2,0]} {cell[2,1]} {cell[2,2]}\n'
     
-    type_labels = config.symbols.species()
-
+    type_list = list(config.symbols)
+    
+    # set can be unordered so can't use set(config.symbols)
+    type_labels = []
+    for i in type_list:
+        if i not in type_labels:
+            type_labels.append(i) # only way i can see to gaurentee order?
+    
     for type in type_labels:
         poscar += f' {type} '
     poscar+='\n'
@@ -64,7 +70,6 @@ def write_POSCAR_str(config: Atoms) -> str:
         count = config.symbols.count(type)
         poscar += f' {count} '
     poscar+='\nDirect\n'
-    
 
     for pos in config.positions:
         poscar+=f'{pos[0]} {pos[1]} {pos[2]}\n'

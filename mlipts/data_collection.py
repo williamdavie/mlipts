@@ -292,7 +292,7 @@ class DataCollection():
                 f.write(header)
                 f.write('\n')
                 f.write(cmd)
-            print(f'MD submission script saved to: {scripts_outdir}/QM_submission_script_#{i}')
+            print(f'QM submission script saved to: {scripts_outdir}/QM_submission_script_#{i}')
             if submit:
                 subprocess.run(f'sbatch {scripts_outdir}/QM_submission_script_#{i}',shell=True)
         
@@ -365,13 +365,16 @@ class DataCollection():
         
     def check_active_MD_configs(self):
         '''
-        prints active MD configurations
+        prints active MD configurations.
         '''
         print('MD configurations currently active: ')
         print(self.active_MD_configs)
         print('Num active configurations: ', len(self.active_MD_configs))
         
-    def __save_active__(self, outname: str):
+    def save_active_MD_configs(self, outname: str):
+        '''
+        Saves the active MD configurations.
+        '''
         
         write(f'{outname}.xyz',self.active_MD_configs)
         
