@@ -81,6 +81,40 @@ def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
     atoms = read(f"{vasp_dir}/vasprun.xml")
     write(database_file, atoms, format="extxyz", append=True)
     return None
+
+
+'''
+Want some native way of editing vasp calculations. Namely (for my work) increasing magmom for supercells. 
+'''
+
+
+class vaspBuild():
+    
+    def __init__(self, vasp_base_dir: str):
+        
+        self.vasp_base_dir = self.vasp_base_dir
+        
+        return None
+    
+    def set_magmom(atom_types: list[str], magmom: np.ndarray):
+        
+        '''
+        Parameters
+        ----------
+        atom_types: list[str]
+            list of atoms types as written in POSCAR
+        magmom: :class:`np.ndarray` 
+            
+        
+        '''
+        
+        
+    
+    
+    
+    
+    
+    
     
 
 '''        

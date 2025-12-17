@@ -1,9 +1,11 @@
 
-Areas for future developement.
+Please first contact me via: willdavie2002@gmail.com
+
+Some quick notes on areas for future developement.
 
 ### Future versions
 
-- Development of active learning workflow.
+- Further development of active learning workflow.
 
 ### Version 1
 
@@ -11,13 +13,16 @@ Areas for future developement.
 
 - Add supported MD and QM codes.
 
+    (using ase to support):
+    - Native lammps base construction 
+    - Native vasp base construction
+
 **similarity**
 
 - Add additional descriptors to access similarity of configurations. e.g. 
     - SOAP
     - 
 - Optimize with numba
-
 
 **hpc_submission**
 
@@ -32,8 +37,6 @@ Areas for future developement.
 **append_to_database**
 
 - options to append data of different boundry conditions.
-
-
 
 
 
