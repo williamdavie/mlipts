@@ -165,7 +165,7 @@ def set_magmom_one_directory(supercell_size: np.ndarray,
     magmom_reordered = np.array(mag_moments)[closest_indices]
     
     # define magmom str
-    magmom_str = ''
+    magmom_str = 'MAGMOM = '
     for i, pos in enumerate(atoms.positions):
         mx,my,mz = magmom_reordered[i][0:3]
         magmom_str += f'{mx} {my} {mz} '
