@@ -17,6 +17,9 @@ Some quick notes on areas for future developement.
     - Native lammps base construction 
     - Native vasp base construction
 
+vasp
+- set_magmom_one_directory() - currently brute forced.
+
 **similarity**
 
 - Add additional descriptors to access similarity of configurations. e.g. 

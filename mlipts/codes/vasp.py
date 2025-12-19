@@ -11,6 +11,9 @@ from ase.io import read, write
 import numpy as np
 import shutil
 import py4vasp
+from pathlib import Path
+
+from itertools import product
 
 
 def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, outdir: str) -> str: 
@@ -86,74 +89,139 @@ def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
 '''
 Want some native way of editing vasp calculations. Namely (for my work) increasing magmom for supercells. 
 '''
+    
+
+#-------------------MAGMOM for large databases------------------
 
 
-class vaspBuild():
+def set_magmom(supercell_size: np.ndarray, 
+               motif: np.ndarray, magmom_motif: np.ndarray, 
+               vasp_calc_dirs: str='./QM_calculations') -> None:
+    '''
+    Given a set of vasp calculation directories, the supercell size, a motif and the magnet moments for the motif, POSCAR is used to set the MAGMOM string. 
+    Allowing the user to access magnetically ordered states for larger supercells.
     
-    def __init__(self, vasp_base_dir: str):
-        
-        self.vasp_base_dir = self.vasp_base_dir
-        
-        return None
+    This is a solid specific functionality where 
     
-    def set_magmom(atom_types: list[str], magmom: np.ndarray):
+    Parameters
+    ----------
+    supercell_size :class:`np.ndarray` 
+        3D array defining supercell size
+    motif: :class:`np.ndarray` 
+        motif of a relaxed solid structure. 
+    magmom_motif: :class:`np.ndarray` 
+        magnetic moments of the motif, order of magmom_motif must equal the order of motif. i.e. the magnetic moment of atom located at motif[i] is magmom_motif[i].
         
-        '''
-        Parameters
-        ----------
-        atom_types: list[str]
-            list of atoms types as written in POSCAR
-        magmom: :class:`np.ndarray` 
+    Returns
+    -------
+    None : None
+        edits INCAR files in call sub directories. 
+    '''
+    
+    path = Path(vasp_calc_dirs)
+    subdirs = [p for p in path.iterdir() if p.is_dir()]
+    for vasp_calc in subdirs:
+        if haveINCAR(str(vasp_calc)) and havePOSCAR(str(vasp_calc)):
+            set_magmom_one_directory(supercell_size,motif,magmom_motif,vasp_calc)
+        else:
+            pass
+    
+    print(f'Magnetic Moments updated in all vasp sub directories of {vasp_calc_dirs}')
+    
+    return None
+    
+    
+def set_magmom_one_directory(supercell_size: np.ndarray,
+                             motif: np.ndarray, magmom_motif: np.ndarray,
+                             vasp_calc_dir: str) -> None:
+    '''
+    Called on each directory by set_magmom
+    '''
+    # This function is quite brute force and is oppitunity to optimize.
+    
+    # define all possible positions
+    atoms = read(f'{vasp_calc_dir}/POSCAR')
+    basis_vectors = np.array(atoms.cell)/supercell_size
+
+    Nx,Ny,Nz = supercell_size[0:3]
+    possible_vectors = []
+    for i,j,k in product(range(0,Nx),range(0,Ny),range(0,Nz)):
+        possible_vectors.append(np.array([i,j,k]))
+    expected_positions = [] # expected for a relaxed lattice
+    mag_moments = []
+    for vecs in possible_vectors:
+        for i,motif_pos in enumerate(motif):
+            pos = (motif_pos + vecs)
+            pos_cart = pos[0] * basis_vectors[0] + pos[1] * basis_vectors[1] + pos[2] * basis_vectors[2]
+            expected_positions.append((pos_cart))
+            mag_moments.append(magmom_motif[i]) # set corresponding magmom
             
+    # find the positions in POSCAR corresponding to positions in motif
+    A = atoms.positions
+    B = np.array(expected_positions)
+    diff = A[:, None, :] - B[None, :, :]  
+    dist2 = np.sum(diff**2, axis=2)       
+    closest_indices = np.argmin(dist2, axis=1)
+    magmom_reordered = np.array(mag_moments)[closest_indices]
+    
+    # define magmom str
+    magmom_str = ''
+    for i, pos in enumerate(atoms.positions):
+        mx,my,mz = magmom_reordered[i][0:3]
+        magmom_str += f'{mx} {my} {mz} '
         
-        '''
-        
-        
+    writeMAGMOM(f'{vasp_calc_dir}/INCAR',new_magmom_str=magmom_str)
     
-    
-    
-    
-    
-    
-    
-
-'''        
-def append_vasp_calc_to_database(database_file: str, vasp_dir: str, pbc: str='T T T'):
-    
-    final_config = ''
-
-    try:
-        calc = py4vasp.Calculation.from_path(vasp_dir)
-        # fetch energy
-        energy_toten = calc.energy.to_dict()
-        eval = energy_toten['free energy    TOTEN']
-
-        # fetch force and structure data
-        force_data =  calc.force.to_dict()
-        elements = force_data['structure']['elements']
-        num_atoms = len(elements)
-
-        l_vecs = force_data['structure']['lattice_vectors']
-        lattice_str = f'Lattice="{l_vecs[0,0]} {l_vecs[0,1]} {l_vecs[0,2]} {l_vecs[1,0]} {l_vecs[1,1]} {l_vecs[1,2]} {l_vecs[2,0]} {l_vecs[2,1]} {l_vecs[2,2]}"'
-        atomic_positions = force_data['structure']['positions']
-    
-        forces = force_data['forces']
-        final_config += f'{num_atoms}\n'
-        final_config += f'{lattice_str} Properties=species:S:1:pos:R:3:forces_xtb:R:3 energy_xtb={eval} pbc="{pbc}"\n'
-    
-        for i in range(0,num_atoms):
-            # convert to cartiesian
-            species = elements[i]
-            position = atomic_positions[i][0] * l_vecs[0] + atomic_positions[i][1] * l_vecs[1] + atomic_positions[i][2] * l_vecs[2]
-            force = forces[i] # possibly a conversion required.
-            final_config += f'{species} {position[0]} {position[1]} {position[2]} {force[0]} {force[1]} {force[2]}\n'
-        
-        with open(database_file,'a') as f:
-            f.write(final_config)
+    return None
             
-    except Exception as e:
-        print(f'The calculation under {vasp_dir} did not failed or did not finish.')
-        print(e)
-        return None
+    
         
-'''
+def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
+    '''
+    given the path to an INCAR file, writes or updates the MAGMOM string
+    '''
+    
+    incar_lines = open(incar,'r').readlines()
+    found = False
+    for i,line in enumerate(incar_lines):
+        if 'MAGMOM' in line:
+            incar_lines[i] = new_magmom_str + '\n'
+            found = True
+    if not found:
+        incar_lines.append('\n')
+        incar_lines.append(new_magmom_str + '\n')
+        
+    with open(incar,'w') as f:
+        new_file_str = "".join(incar_lines)
+        f.write(new_file_str)
+        
+    return None
+    
+    
+def haveINCAR(dir: str):
+    '''
+    checks if a directory contains INCAR
+    '''
+    path = Path(dir)
+    files = [str(p.name) for p in path.iterdir()]
+    if 'INCAR' in files:
+        return True
+    else:
+        return False
+    
+def havePOSCAR(dir: str):
+    '''
+    checks if a directory contains POSCAR
+    '''
+    path = Path(dir)
+    files = [str(p.name) for p in path.iterdir()]
+    if 'POSCAR' in files:
+        return True
+    else:
+        return False
+        
+    
+    
+    
+
+    

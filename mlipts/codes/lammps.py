@@ -301,6 +301,6 @@ class lammpsBuild():
         with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
             f.write(input_str)
                 
-        print(f'Caculation directory generated: {outdir}/{new_dir}')
+        print(f'Calculation directory generated: {new_dir}')
         
         return None

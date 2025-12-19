@@ -214,6 +214,9 @@ class DataCollection():
         
         if not self.active_MD_configs:
             self.fetch_MD_configs_from_calcs()
+        if not self.active_MD_configs:
+            raise ValueError("MD calculations are active, but no configurations read, you may need to wait for calculations to finish." )
+            
             
         print(f'Number of active configs = number of QM calculation directories = {len(self.active_MD_configs)}')
         
@@ -313,12 +316,18 @@ class DataCollection():
         
         for dir in self.active_MD_dirs:
             self.active_MD_configs.extend(read_lammps_output(dir,atom_types=self.atom_types))
+            
         return self.active_MD_configs
     
     
     def set_active_MD_dirs(self, outdir: str='./MD_calculations') -> None:
         '''
         Set MD calculation directories manually.
+        
+        Parameters
+        ----------
+        outdir: str
+            path to directory storing MD calculations, expected file structure is {outdir}/{calculation_dir}.
         '''
         
         old_len = len(self.active_MD_dirs)
