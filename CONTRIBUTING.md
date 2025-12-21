@@ -1,46 +1,47 @@
 
-Please first contact me via: willdavie2002@gmail.com
+# Contributing
 
-Some quick notes on areas for future developement.
+Please first contact me via: willdavie2002@gmail.com. There are many areas for improvement, some possible routes are outlined here.
 
-### Future versions
+## Version 0.1.X
 
-- Further development of active learning workflow.
+### mlipt.codes
 
-### Version 1
+Main focus on perfecting support for LAMMPS and VASP, but aim to add support for other codes too.
 
-**codes**
+|  job                                 | priority | description |
+|--------------------------------------|----------|----------|
+| vary LAMMPS parameters across sample space | High      |    need flexability on defining a sample space, e.g. defining a different random seed for velocities   |  
+| Native VASP directory construction   | Med     |  Using information in the MD base directory define a simple vasp calculation setup.    |
+| Native LAMMPS directory construction | Low     |   Given some basic information, construct a lammps directory    |  
 
-- Add supported MD and QM codes.
+### mlpit.similarity
 
-    (using ase to support):
-    - Native lammps base construction 
-    - Native vasp base construction
+|  job                                 | priority | description |
+|--------------------------------------|----------|----------|
+| Add additional descriptors to access similarity of configurations | Med      | E.g. SOAP, High priority if MLIPTS is going to be used for non-periodic solids. |  
+| Optimize intensive calculations | Low     |  Unless analysing a huge dataset, this is not a bottleneck in the workflow  |
 
-vasp
-- set_magmom_one_directory() - currently brute forced.
+### mlipts.hpc_submission
 
-**similarity**
+|  job                                 | priority | description |
+|--------------------------------------|----------|----------|
+| Add further support for custom hpcs | Med |  |
+ 
+### mlipts.append_to_database
 
-- Add additional descriptors to access similarity of configurations. e.g. 
-    - SOAP
-    - 
-- Optimize with numba
-
-**hpc_submission**
-
-- Add supported hpcs.
-- Support for cunstructing a custom script header
-- generalise writing hpc scripts for SLURM, i.e. include repeated headers
-
-**DataCollection**
-
-- add save_and_remove for write_MD_submission_scripts
-
-**append_to_database**
-
-- options to append data of different boundry conditions.
+|  job                                 | priority | description |
+|--------------------------------------|----------|----------|
+| Catch errors from QM calculations before appending | High | E.g. if calculations fail to converge.  |
+| Add options to save additional data from QM calculation | Med | e.g. magnetic and charge states, (+ any useful output parameter of choice with a keyword.) |
 
 
+### mlipts.data_collection
+
+Support for all changes in the main class. 
+
+## Version 0.2.X
+
+Development of the active learning workflow. Native support for model training.
 
 
