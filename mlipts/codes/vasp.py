@@ -145,7 +145,8 @@ def set_magmom_one_directory(supercell_size: np.ndarray,
 
     Nx,Ny,Nz = supercell_size[0:3]
     possible_vectors = []
-    for i,j,k in product(range(0,Nx),range(0,Ny),range(0,Nz)):
+    # by expanding range to (-1,N+1, variations of wrapped co-ords outputed by the MD calculation. 
+    for i,j,k in product(range(-1,Nx+1),range(-1,Ny+1),range(-1,Nz+1)):
         possible_vectors.append(np.array([i,j,k]))
     expected_positions = [] # expected for a relaxed lattice
     mag_moments = []
