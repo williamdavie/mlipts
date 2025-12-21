@@ -242,10 +242,11 @@ class DataCollection():
                                    database_file: str=None,
                                    hpc: str='archer2',
                                    hpc_account: str=None,
-                                   scripts_outdir: str='./QMscripts',
+                                   scripts_outdir: str='./QM_scripts',
                                    submit: bool=True,
                                    header_str: str=None,
-                                   mark_as_active: bool=True):
+                                   mark_as_active: bool=True,
+                                   calcs_outdir: str='./QM_calculations') -> None:
         '''
         Build submission script for Quantum Mechanical (first principle) simulations, built for all directories marked 'initialized'. 
         
@@ -281,6 +282,8 @@ class DataCollection():
         # header
         header = fetch_hpc_header(hpc,header_str,nodes,ranks,time,hpc_account)
         
+        if not self.initialized_QM_dirs:
+            self.set_init_QM_dirs(outdir=calcs_outdir)
         #cmd
         if QMcode not in __QMcodes__:
             raise ValueError(f'QM code {QMcode} not supported')
@@ -341,6 +344,7 @@ class DataCollection():
         
         return None
     
+    
     def set_active_MD_configs(self,
                               config_file: str) -> None:
         '''
@@ -386,6 +390,22 @@ class DataCollection():
         '''
         
         write(f'{outname}.xyz',self.active_MD_configs)
+        
+        
+    def set_init_QM_dirs(self, outdir: str='./QM_calculations') -> None:
+        '''
+        Set QM calculation directories manually.
+        '''
+        
+        path = Path(outdir)
+        if not path.exists():
+            raise FileNotFoundError(f'Tried to read QM calculations in {outdir} but the directory was not found, may need to set param `calc_dirs`')
+        subdirs = [p for p in path.iterdir() if p.is_dir()]
+        for calc in subdirs:
+            if calc not in self.initialized_QM_dirs:
+                self.initialized_QM_dirs.append(str(calc))
+                
+        return None
         
         
 def fetch_hpc_header(hpc: str, header_str: str, 
