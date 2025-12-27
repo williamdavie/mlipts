@@ -9,7 +9,9 @@ from mlipts.codes.lammps import build_lammps_calculations, read_lammps_output
 from mlipts.codes.vasp import build_vasp_calculation
 from mlipts.hpc_submission.archer2 import archer2_submission_template
 from mlipts.similarity.filter import filter_by_emd
+from mlipts.similarity.group import smart_group_calcs
 from ase import Atoms
+import numpy as np 
 from ase.io import read, write
 from pathlib import Path
 import subprocess
@@ -244,6 +246,8 @@ class DataCollection():
                                    hpc_account: str=None,
                                    scripts_outdir: str='./QM_scripts',
                                    submit: bool=True,
+                                   smart_convergence: bool=False,
+                                   expected_motif: np.ndarray=None,
                                    header_str: str=None,
                                    mark_as_active: bool=True,
                                    calcs_outdir: str='./QM_calculations') -> None:
@@ -287,11 +291,17 @@ class DataCollection():
         #cmd
         if QMcode not in __QMcodes__:
             raise ValueError(f'QM code {QMcode} not supported')
+        
+        if smart_convergence == True:
+            if expected_motif is None:
+                raise ValueError('Cannot perform smart convergence without an expected structure (expected_motif).')
+            self.initialized_QM_dirs = smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode,)
+        
         cmd_scipts = write_run_calculation_scripts(self.initialized_QM_dirs,
                                                    QM_cmd_line,
                                                    npartitions=npartitions,
                                                    save_and_remove=save_and_remove,
-                                                   python_env=python_env,code=QMcode,database_file=database_file)
+                                                   python_env=python_env,code=QMcode,database_file=database_file,smart_convergence=smart_convergence)
         Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
             with open (f'{scripts_outdir}/QM_submission_script_#{i}','w') as f:
@@ -437,7 +447,8 @@ def write_run_calculation_scripts(calc_dirs: list[str],
                                  save_and_remove: bool=False,
                                  python_env: str=None,
                                  code: str=None,
-                                 database_file: str=None) -> list[str]:
+                                 database_file: str=None,
+                                 smart_convergence: bool=False) -> list[str]:
     '''
     Given a list of calculation directories, npartitions scipt(s) are generated to enter each directory and run a command line.
     
@@ -485,6 +496,15 @@ def write_run_calculation_scripts(calc_dirs: list[str],
     else:
         savedata_cmd = ''
         remove_cmd = ''
+      
+    if smart_convergence == True:
+        smart_convergence_cmd_1='dir_list=($directories)\nlast_idx=$((${#dir_list[@]} - 1))\nlast_dir=${dir_array[$last_idx]}\n'
+        if code == 'vasp':
+            smart_convergence_cmd_2 = 'if [ "$i" != "$last_dir" ]; then\n   cp $i/CHGCAR ${($directories)[i+1]}\nfi\n'
+        else:
+            pass
+    else:
+        smart_convergence_cmd_1 = smart_convergence_cmd_2 = ''
     
     num_calcs_per_submission = int(len(calc_dirs) / npartitions)
 
@@ -495,13 +515,16 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         current_dirs=''
         for dir in calc_dirs[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
             current_dirs+=f'{dir} '
-        
+            
+
         script+=f'directories="{current_dirs}"\n'
+        script+=smart_convergence_cmd_1
         script+=f'''for i in $directories; 
 do 
 cd $i
 {cmd_line}
 cd -
+{smart_convergence_cmd_2}
 {savedata_cmd}
 {remove_cmd}
 done\n'''

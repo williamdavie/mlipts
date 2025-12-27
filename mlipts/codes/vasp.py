@@ -86,6 +86,25 @@ def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
     return None
 
 
+
+def fetch_configs_vasp(calc_dirs: list[str]) -> list[Atoms]:
+    '''
+    from a set of directories containing vasp in files, read configs.
+    '''
+    configs = []
+    for dir in calc_dirs:
+        if havePOSCAR(dir):
+            atoms = read(f'{dir}/POSCAR')
+            configs.append(atoms)
+        else:
+            print(f'No POSCAR found in directory: {dir}')
+            pass
+        
+    return configs 
+            
+        
+
+
 '''
 Want some native way of editing vasp calculations. Namely (for my work) increasing magmom for supercells. 
 '''
@@ -222,6 +241,7 @@ def havePOSCAR(dir: str):
         return False
         
     
+
     
     
 
