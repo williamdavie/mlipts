@@ -6,7 +6,7 @@ Main class for collecting a data set for model training/fine-tuning.
 '''
 
 from mlipts.codes.lammps import build_lammps_calculations, read_lammps_output
-from mlipts.codes.vasp import build_vasp_calculation
+from mlipts.codes.vasp import build_vasp_calculation,set_icharg
 from mlipts.hpc_submission.archer2 import archer2_submission_template
 from mlipts.similarity.filter import filter_by_emd
 from mlipts.similarity.group import smart_group_calcs
@@ -295,8 +295,15 @@ class DataCollection():
         if smart_convergence == True:
             if expected_motif is None:
                 raise ValueError('Cannot perform smart convergence without an expected structure (expected_motif).')
-            self.initialized_QM_dirs = smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode,)
-        
+            self.initialized_QM_dirs, init_run_dirs = smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode)
+            if QMcode=='vasp':
+                for i in self.initialized_QM_dirs:
+                    if i in init_run_dirs:
+                        set_icharg(2,i)
+                    else:
+                        set_icharg(1,i)
+                    
+                
         cmd_scipts = write_run_calculation_scripts(self.initialized_QM_dirs,
                                                    QM_cmd_line,
                                                    npartitions=npartitions,
@@ -498,13 +505,12 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         remove_cmd = ''
       
     if smart_convergence == True:
-        smart_convergence_cmd_1='dir_list=($directories)\nlast_idx=$((${#dir_list[@]} - 1))\nlast_dir=${dir_array[$last_idx]}\n'
         if code == 'vasp':
-            smart_convergence_cmd_2 = 'if [ "$i" != "$last_dir" ]; then\n   cp $i/CHGCAR ${($directories)[i+1]}\nfi\n'
+            smart_convergence_cmd = 'if (( i < num_dirs-1 )); then\necho "Coping CHGCAR to next calculation"\ncp "$dir/CHGCAR" "${directories[i+1]}/"\nfi'
         else:
-            pass
+            raise ValueError(f'smart convergence only supported for [vasp]')
     else:
-        smart_convergence_cmd_1 = smart_convergence_cmd_2 = ''
+        smart_convergence_cmd = ''
     
     num_calcs_per_submission = int(len(calc_dirs) / npartitions)
 
@@ -516,18 +522,13 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         for dir in calc_dirs[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
             current_dirs+=f'{dir} '
             
-
-        script+=f'directories="{current_dirs}"\n'
-        script+=smart_convergence_cmd_1
-        script+=f'''for i in $directories; 
-do 
-cd $i
-{cmd_line}
-cd -
-{smart_convergence_cmd_2}
-{savedata_cmd}
-{remove_cmd}
-done\n'''
+        script+=f'directories=({current_dirs})\n'
+        script+='num_dirs=${#directories[@]}\n'
+        script+='for ((i=0; i<num_dirs; i++)); do\ndir="${directories[i]}"\n'
+        script+=f'echo "Running {code} in $dir"\n'
+        script+=f'cd $dir\n{cmd_line}\ncd -\n'
+        script+=f'{smart_convergence_cmd}\n{savedata_cmd}\n{remove_cmd}\n'
+        script+=f'done\n'
 
         calc_scripts.append(script)
             

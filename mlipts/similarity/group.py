@@ -10,7 +10,10 @@ from ase.io import read,write
 from mlipts.similarity.pdd import PDD
 from mlipts.similarity.emd import EMD
 
-def smart_group_calcs(calc_dirs: list[str], ngroups: int, expected_motif: np.ndarray, calc_code: str='vasp', group_by: str='emd'):
+def smart_group_calcs(calc_dirs: list[str], 
+                      ngroups: int, 
+                      expected_motif: np.ndarray,
+                      calc_code: str='vasp', group_by: str='emd') -> tuple[list[str]]:
     '''
     Given a set of calculation paths (calc_dirs), group to maximise calculation convergence when batched to a supercomputer.
     
@@ -29,10 +32,16 @@ def smart_group_calcs(calc_dirs: list[str], ngroups: int, expected_motif: np.nda
         
     Returns
     -------
-    calc_dirs_grouped: list[list[str]]
-        list of paths, each sub list is a group. 
+    calc_dirs_grouped: list[str]
+        list of paths, ordered so they are grouped by size of the partioning
+    calc_dirs_init: list[str]
+        a list of paths corrosponding to the starting configurations.
     '''
     
+    print('---------------------------------------------------------------------------')
+    print('Beginning to sort configs for smart convergence. This process can be costly')
+    print('---------------------------------------------------------------------------')
+
     if calc_code == 'vasp':
         configs = fetch_configs_vasp(calc_dirs)
     else:
@@ -43,7 +52,7 @@ def smart_group_calcs(calc_dirs: list[str], ngroups: int, expected_motif: np.nda
     else:
         raise ValueError(f'similarity assessment statergy (group_by) {group_by} not regonised')
 
-    return [calc_dirs[i] for sublist in group_indicies for i in sublist]
+    return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
 
 
 
@@ -52,14 +61,13 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     Given an expected motif sort configurations into n groups to maximise convergence. 
     '''
     
-    print('Beginning to sort configs for smart convergence. This process can be costly')
 
     group_size = len(configs)/ngroups
     indicies = np.zeros((ngroups,int(len(configs)/ngroups)),dtype=np.int16)
     counts = np.zeros(ngroups,dtype=np.int16)
     available_mask = np.ones(len(configs), dtype=bool) #mask used configs.
     all_pdds = [PDD(c.positions, c.cell, k) for c in configs]
-    # first find the starting point for each group.
+    # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
     for i,config in enumerate(configs):
         motif_config = return_motif_config(config,expected_motif)
@@ -71,15 +79,15 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     available_mask[end_points] = False
     seen_configs = [configs[i] for i in end_points]
     indicies[:,0] = end_points
-    
-    # iterative expansion of groups
+    cell_norm = fetch_cell_norm_diff(configs)
+    # iterative expansion of groups by greedy clustering
     while np.any(counts < group_size-1):
         progress = np.sum(counts+1)/len(configs) * 100
         print(f"\rProgress: {(round(progress,1))}%", end="")
 
         config_to_append = None
         config_to_push_back = None
-        min_emd = 1 # max value of the emd.
+        min_score = 1 # max value of the emd.
         for i,config in enumerate(configs):
             if not available_mask[i]:
                 continue
@@ -88,19 +96,22 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
                     PDD1 = all_pdds[i]
                     PDD2 = all_pdds[end_index]
                     emd = EMD(PDD1,PDD2)
-                    if emd <= min_emd:
-                        min_emd = emd
+                    cell_diff_score = np.linalg.norm(configs[i].cell - configs[end_index].cell) / cell_norm
+                    score = 0.9 * cell_diff_score + 0.1 * emd
+                    if score <= min_score:
+                        min_score = score
                         config_to_append = i
                         config_to_push_back = j
-        
+                    
         # update
         end_points[config_to_push_back] = config_to_append
         available_mask[config_to_append] = False
         seen_configs.append(configs[config_to_append])     
         counts[config_to_push_back] += 1
         indicies[config_to_push_back][counts[config_to_push_back]] = config_to_append
-        
-    print('Done grouping')
+    
+    print('\nSorting Done')
+    print('---------------------------------------------------------------------------')
     
     return indicies
     
@@ -129,3 +140,12 @@ def return_motif_config(config: Atoms, motif: np.ndarray):
 
     return motif_config
     
+    
+def fetch_cell_norm_diff(configs: list[Atoms]):
+    
+    diffs = []
+    for i in configs:
+        for j in configs:
+            diffs.append(np.linalg.norm(i.cell - j.cell))
+            
+    return max(diffs)

@@ -108,7 +108,28 @@ def fetch_configs_vasp(calc_dirs: list[str]) -> list[Atoms]:
 '''
 Want some native way of editing vasp calculations. Namely (for my work) increasing magmom for supercells. 
 '''
+
+#-------------------set ICHARG across database------------------
+
+def set_icharg(value: int, vasp_calc_dir: str):
     
+    incar_lines = open(f'{vasp_calc_dir}/INCAR','r').readlines()
+    found = False
+    for i,line in enumerate(incar_lines):
+        if 'ICHARG' in line:
+            incar_lines[i] = f'ICHARG = {value}\n'
+            found = True
+    if not found:
+        incar_lines.append('\n')
+        incar_lines.append(f'ICHARG = {value}\n')
+        
+    with open(f'{vasp_calc_dir}/INCAR','w') as f:
+        new_file_str = "".join(incar_lines)
+        f.write(new_file_str)
+        
+    return None
+
+
 
 #-------------------MAGMOM for large databases------------------
 
