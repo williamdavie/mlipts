@@ -498,8 +498,8 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         if not Path(f'{python_env}/bin/python').exists():
             raise FileNotFoundError(f"couldn't find python at ({python_env}/bin/python)")
         
-        savedata_cmd = f'{python_env}/bin/python -m mlipts.append_to_database $i {database_file} {code}'
-        remove_cmd = 'rm -r $i'
+        savedata_cmd = f'{python_env}/bin/python -m mlipts.append_to_database $dir {database_file} {code}'
+        remove_cmd = 'rm -r $dir'
     else:
         savedata_cmd = ''
         remove_cmd = ''
