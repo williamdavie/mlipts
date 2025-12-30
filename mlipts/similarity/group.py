@@ -85,8 +85,8 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
         progress = np.sum(counts+1)/len(configs) * 100
         print(f"\rProgress: {(round(progress,1))}%", end="")
 
-        config_to_append = None
-        config_to_push_back = None
+        config_to_append = 0
+        config_to_push_back = 0
         min_score = 1 # max value of the emd.
         for i,config in enumerate(configs):
             if not available_mask[i]:
@@ -123,20 +123,23 @@ def return_motif_config(config: Atoms, motif: np.ndarray):
     motif_config = config.copy()
     lattice_vectors = np.array(config.cell)
     #first search surrounding space in case config positions are wrapped. (may need to be edited for non-square cells?)
-    motif_cart_extended = []
+    motif_extended = []
     for i,j,k in product(range(0,2),range(0,2),range(0,2)):
         for motif_pos in motif:
             pos = (motif_pos + np.array([i,j,k]))
-            pos_cart = pos[0] * lattice_vectors[0] + pos[1] * lattice_vectors[1] + pos[2] * lattice_vectors[2]
-            motif_cart_extended.append(pos_cart)
+            #pos_cart = pos[0] * lattice_vectors[0] + pos[1] * lattice_vectors[1] + pos[2] * lattice_vectors[2]
+            motif_extended.append(pos)
+            
     # notice this is very similar to that used in mlipts.codes.vasp.set_magmom, could be generalized. 
-    A = config.positions
-    B = np.array(motif_cart_extended)
+    A = config.get_scaled_positions()
+    print(A)
+    B = np.array(motif_extended)
     diff = A[:, None, :] - B[None, :, :]  
     dist2 = np.sum(diff**2, axis=2)       
     closest_indices = np.argmin(dist2, axis=1)
-    motif_cart = B[closest_indices]
-    motif_config.set_positions(motif_cart)
+    motif_new = B[closest_indices]
+    
+    motif_config.set_scaled_positions(motif_new)
 
     return motif_config
     

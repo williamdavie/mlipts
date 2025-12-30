@@ -108,7 +108,7 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
         
     configs: list[Atoms] = []
     for i in range(num_snapshots):
-        config = Atoms(symbols=type_labels,positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
+        config = Atoms(symbols=type_labels,scaled_positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
         configs.append(config)
         
     return configs

@@ -74,7 +74,7 @@ def write_POSCAR_str(config: Atoms) -> str:
         poscar += f' {count} '
     poscar+='\nDirect\n'
 
-    for pos in config.positions:
+    for pos in config.get_scaled_positions():
         poscar+=f'{pos[0]} {pos[1]} {pos[2]}\n'
  
     return poscar
