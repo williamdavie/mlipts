@@ -3,7 +3,7 @@ group atomic positions according to similarity criteria.
 '''
 
 import numpy as np
-from mlipts.codes.vasp import fetch_configs_vasp
+from mlipts.codes.vasp import fetch_configs_vasp,build_vasp_calculation
 from ase.atoms import Atoms
 from itertools import product
 from ase.io import read,write
@@ -13,7 +13,8 @@ from mlipts.similarity.emd import EMD
 def smart_group_calcs(calc_dirs: list[str], 
                       ngroups: int, 
                       expected_motif: np.ndarray,
-                      calc_code: str='vasp', group_by: str='emd') -> tuple[list[str]]:
+                      calc_code: str='vasp', group_by: str='emd',
+                      pilot_calculations: bool=True) -> tuple[list[str]]:
     '''
     Given a set of calculation paths (calc_dirs), group to maximise calculation convergence when batched to a supercomputer.
     
@@ -48,19 +49,21 @@ def smart_group_calcs(calc_dirs: list[str],
         raise ValueError(f'Calculation code {calc_code} not supported in smart grouping. ')
     if group_by == 'emd':
         k = int(input('Input number of neighbours (k) used for earth movers distance: '))
-        group_indicies = smart_group_by_emd(configs,ngroups,expected_motif,k)
+        group_indicies, pilot_calculation_configs = smart_group_by_emd(configs,ngroups,expected_motif,k)
     else:
         raise ValueError(f'similarity assessment statergy (group_by) {group_by} not regonised')
 
-    return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
+    return group_indicies, pilot_calculation_configs
+    #return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
 
 
 
-def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.ndarray, k: int):
+def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.ndarray, k: int, pilot_calculation: bool=True):
     '''
     Given an expected motif sort configurations into n groups to maximise convergence. 
     '''
     
+    pilot_calculation_configs = None
 
     group_size = len(configs)/ngroups
     indicies = np.zeros((ngroups,int(len(configs)/ngroups)),dtype=np.int16)
@@ -76,6 +79,8 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
         init_emds[i] = EMD(PDD1,PDD2) 
     
     end_points = np.argpartition(init_emds, ngroups-1)[:ngroups]
+    if pilot_calculation==True:
+        pilot_calculation_configs = [return_motif_config(configs[i],expected_motif) for i in end_points]
     available_mask[end_points] = False
     seen_configs = [configs[i] for i in end_points]
     indicies[:,0] = end_points
@@ -113,7 +118,7 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     print('\nSorting Done')
     print('---------------------------------------------------------------------------')
     
-    return indicies
+    return indicies, pilot_calculation_configs
     
 
 def return_motif_config(config: Atoms, motif: np.ndarray):
@@ -132,7 +137,6 @@ def return_motif_config(config: Atoms, motif: np.ndarray):
             
     # notice this is very similar to that used in mlipts.codes.vasp.set_magmom, could be generalized. 
     A = config.get_scaled_positions()
-    print(A)
     B = np.array(motif_extended)
     diff = A[:, None, :] - B[None, :, :]  
     dist2 = np.sum(diff**2, axis=2)       

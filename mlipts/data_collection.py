@@ -43,9 +43,10 @@ class DataCollection():
         
         self.initialized_QM_dirs = []
         self.active_QM_dirs = []
-    
         
         self.MD_submission_count = 0
+        
+        self.QM_base_dir = None
 
         
     def build_MD_calculations(self, 
@@ -194,7 +195,8 @@ class DataCollection():
                               QM_base_dir: str, 
                               QMcode: str='vasp', 
                               outdir: str = './QM_calculations', 
-                              label: str=None) -> None:
+                              label: str=None,
+                              pre_define_configs: list[Atoms]=None) -> None:
         '''
         For all active MD configs (self.active_MD_configs) a first principle calculation directory is generated.
         
@@ -203,7 +205,8 @@ class DataCollection():
         QM_base_dir: str
             directory containing necessary files for a QM calculations except atomic position information, which will be taken from active MD calculations.
         QMcode: str
-            code used. Default is vasp.    
+            code used. Default is vasp. 
+        pre_defined_configs
             
         Returns
         -------
@@ -214,23 +217,28 @@ class DataCollection():
         if label==None:
             label=QMcode
         
-        if not self.active_MD_configs:
+        if not self.active_MD_configs and pre_define_configs is None:
             self.fetch_MD_configs_from_calcs()
-        if not self.active_MD_configs:
-            raise ValueError("MD calculations are active, but no configurations read, you may need to wait for calculations to finish." )
-            
-            
-        print(f'Number of active configs = number of QM calculation directories = {len(self.active_MD_configs)}')
+            if not self.active_MD_configs:
+                raise ValueError("MD calculations are active, but no configurations read, you may need to wait for calculations to finish." )
         
-        for i,config in enumerate(self.active_MD_configs):
+        if pre_define_configs is not None:
+            configs_for_build: list[Atoms] = pre_define_configs
+        else:
+            configs_for_build: list[Atoms] = self.active_MD_configs
+            print(f'Number of active configs = number of QM calculation directories = {len(self.active_MD_configs)}')
+        
+        for i,config in enumerate(configs_for_build):
+            extension = '' if len(configs_for_build)==1 else f'_c_#{i}'
             if QMcode == 'vasp':
-                new_calc_dir = build_vasp_calculation(QM_base_dir,config,f'{label}_c_#{i}',outdir)
+                new_calc_dir = build_vasp_calculation(QM_base_dir,config,f'{label}{extension}',outdir)
             elif QMcode not in __QMcodes__:
                 raise ValueError(f'QM code {QMcode} not supported')
             
             self.initialized_QM_dirs.append(new_calc_dir)
             
         print(f'Calculations stored in {outdir}')
+        self.QM_base_dir = QM_base_dir
         
         return None
     
@@ -248,6 +256,7 @@ class DataCollection():
                                    submit: bool=True,
                                    smart_convergence: bool=False,
                                    expected_motif: np.ndarray=None,
+                                   pilot_calculations: bool=True,
                                    header_str: str=None,
                                    mark_as_active: bool=True,
                                    calcs_outdir: str='./QM_calculations') -> None:
@@ -295,13 +304,24 @@ class DataCollection():
         if smart_convergence == True:
             if expected_motif is None:
                 raise ValueError('Cannot perform smart convergence without an expected structure (expected_motif).')
-            self.initialized_QM_dirs, init_run_dirs = smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode)
+            QM_group_indicies, pilot_calculation_configs = smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode,pilot_calculations=pilot_calculations)
+            if pilot_calculations:
+                n_main_calcs = len(self.initialized_QM_dirs)
+                QM_group_indicies_extended = np.zeros((QM_group_indicies.shape[0],QM_group_indicies.shape[1]+1),dtype=np.int16)
+                QM_group_indicies_extended[:,1:] = QM_group_indicies[:,0:]
+                for i in range(npartitions):
+                    self.build_QM_calculations(self.initialized_QM_dirs[QM_group_indicies[i,0]],QMcode,calcs_outdir,pre_define_configs=[pilot_calculation_configs[i]],label=f'pilot_#{i}')
+                    #pilot calculations are the last items in the list. 
+                    QM_group_indicies_extended[i,0] = n_main_calcs + i
+                QM_group_indicies = QM_group_indicies_extended
+                
+            self.initialized_QM_dirs = [self.initialized_QM_dirs[i] for sublist in QM_group_indicies for i in sublist]
             if QMcode=='vasp':
-                for i in self.initialized_QM_dirs:
-                    if i in init_run_dirs:
-                        set_icharg(2,i)
+                for i,dir in enumerate(self.initialized_QM_dirs):
+                    if i in QM_group_indicies[:,0]:
+                        set_icharg(2,dir)
                     else:
-                        set_icharg(1,i)
+                        set_icharg(1,dir)
                     
                 
         cmd_scipts = write_run_calculation_scripts(self.initialized_QM_dirs,
@@ -391,6 +411,20 @@ class DataCollection():
         print('MD directories currently active: ')
         print(self.active_MD_dirs)
         print('Num active directories: ', len(self.active_MD_dirs))
+        
+    def check_QM_base_dir(self):
+  
+        if self.QM_base_dir is None:
+            dir = input('Searched for a Quantum mechanical base directory, none found please define a path: ')
+            if not Path(dir).is_dir():
+                raise FileNotFoundError(f'{dir} not found.')
+            else:
+                self.QM_base_dir = dir
+                return True
+        else:
+            return True
+        
+
         
         
     def check_active_MD_configs(self):
@@ -498,8 +532,10 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         if not Path(f'{python_env}/bin/python').exists():
             raise FileNotFoundError(f"couldn't find python at ({python_env}/bin/python)")
         
-        savedata_cmd = f'{python_env}/bin/python -m mlipts.append_to_database $dir {database_file} {code}'
-        remove_cmd = 'rm -r $dir'
+        savedata_cmd = f'echo "Saving data from this calculation to {database_file}"\n'
+        savedata_cmd += f'{python_env}/bin/python -m mlipts.append_to_database $dir {database_file} {code}'
+        remove_cmd = f'echo "Data saved, deleting {code} directory"\n'
+        remove_cmd += 'rm -r $dir'
     else:
         savedata_cmd = ''
         remove_cmd = ''
