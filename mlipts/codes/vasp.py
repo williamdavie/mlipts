@@ -82,6 +82,10 @@ def write_POSCAR_str(config: Atoms) -> str:
 
 def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
     atoms = read(f"{vasp_dir}/vasprun.xml")
+    outcar_str = open(f'{vasp_dir}/OUTCAR','r').read()
+    if 'aborting loop EDIFF was not reached (unconverged)' in outcar_str:
+        print('Self consistency failed, not saving data.')
+        return None
     write(database_file, atoms, format="extxyz", append=True)
     return None
 
@@ -122,7 +126,7 @@ def set_icharg(value: int, vasp_calc_dir: str):
     if not found:
         incar_lines.append('\n')
         incar_lines.append(f'ICHARG = {value}\n')
-        
+    
     with open(f'{vasp_calc_dir}/INCAR','w') as f:
         new_file_str = "".join(incar_lines)
         f.write(new_file_str)

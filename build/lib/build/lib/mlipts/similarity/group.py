@@ -9,7 +9,6 @@ from itertools import product
 from ase.io import read,write
 from mlipts.similarity.pdd import PDD
 from mlipts.similarity.emd import EMD
-from mlipts.atom_tools import sort_configs_by_volume
 
 def smart_group_calcs(calc_dirs: list[str], 
                       ngroups: int, 
@@ -66,34 +65,20 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     
     pilot_calculation_configs = None
 
-    group_size = int(len(configs)/ngroups)
+    group_size = len(configs)/ngroups
     indicies = np.zeros((ngroups,int(len(configs)/ngroups)),dtype=np.int16)
     counts = np.zeros(ngroups,dtype=np.int16)
     available_mask = np.ones(len(configs), dtype=bool) #mask used configs.
     all_pdds = [PDD(c.positions, c.cell, k) for c in configs]
     # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
+    for i,config in enumerate(configs):
+        motif_config = return_motif_config(config,expected_motif)
+        PDD1 = all_pdds[i]
+        PDD2 = PDD(motif_config.positions,motif_config.cell,k)
+        init_emds[i] = EMD(PDD1,PDD2) 
     
-    volume_sorted_configs = sort_configs_by_volume(configs)
-    end_points = np.zeros(ngroups,dtype=np.int16)
-    
-    for i in range(0,ngroups):
-        # split the volume space according to number of groups.
-        # find the min emd in that range.
-        min_config = None
-        min_emd = 1
-        for sorted_config in volume_sorted_configs[i*group_size:(i*(group_size)+group_size)]:
-            motif_config = return_motif_config(sorted_config,expected_motif)
-            config_index = configs.index(sorted_config)
-            PDD1 = all_pdds[config_index]
-            PDD2 = PDD(motif_config.positions,motif_config.cell,k)
-            emd = EMD(PDD1,PDD2) 
-            if emd <= min_emd:
-                min_config = config_index
-        
-        end_points[i] = min_config 
-    
-
+    end_points = np.argpartition(init_emds, ngroups-1)[:ngroups]
     if pilot_calculation==True:
         pilot_calculation_configs = [return_motif_config(configs[i],expected_motif) for i in end_points]
     available_mask[end_points] = False
@@ -104,6 +89,7 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     while np.any(counts < group_size-1):
         progress = np.sum(counts+1)/len(configs) * 100
         print(f"\rProgress: {(round(progress,1))}%", end="")
+
         config_to_append = 0
         config_to_push_back = 0
         min_score = 1 # max value of the emd.
@@ -170,6 +156,3 @@ def fetch_cell_norm_diff(configs: list[Atoms]):
             diffs.append(np.linalg.norm(i.cell - j.cell))
             
     return max(diffs)
-
-
-    

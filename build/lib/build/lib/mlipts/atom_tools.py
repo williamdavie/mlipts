@@ -1,6 +1,5 @@
 import numpy as np
 from itertools import product
-from ase import Atoms
 
 def fetch_supercell_motif(motif: np.ndarray, supercell_dims: np.ndarray):
     
@@ -14,13 +13,6 @@ def fetch_supercell_motif(motif: np.ndarray, supercell_dims: np.ndarray):
     
     return np.array(supercell_motif)
             
-
-def sort_configs_by_volume(configs: list[Atoms]) -> list[Atoms]:
-    
-    volumes = np.array([c.get_volume() for c in configs])
-    indicies = np.argsort(volumes)
-    return [configs[i] for i in indicies]
-
 
 if __name__ == '__main__':
 

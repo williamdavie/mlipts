@@ -313,17 +313,17 @@ class DataCollection():
                     self.build_QM_calculations(self.initialized_QM_dirs[QM_group_indicies[i,0]],QMcode,calcs_outdir,pre_define_configs=[pilot_calculation_configs[i]],label=f'pilot_#{i}')
                     #pilot calculations are the last items in the list. 
                     QM_group_indicies_extended[i,0] = n_main_calcs + i
-                QM_group_indicies = QM_group_indicies_extended
-                
-            self.initialized_QM_dirs = [self.initialized_QM_dirs[i] for sublist in QM_group_indicies for i in sublist]
+                QM_group_indicies = QM_group_indicies_extended.copy()
+
             if QMcode=='vasp':
                 for i,dir in enumerate(self.initialized_QM_dirs):
-                    if i in QM_group_indicies[:,0]:
+                    if i in list(QM_group_indicies[:,0]):
                         set_icharg(2,dir)
                     else:
                         set_icharg(1,dir)
-                    
-                
+                        
+            self.initialized_QM_dirs = [self.initialized_QM_dirs[i] for sublist in QM_group_indicies for i in sublist]
+            
         cmd_scipts = write_run_calculation_scripts(self.initialized_QM_dirs,
                                                    QM_cmd_line,
                                                    npartitions=npartitions,
