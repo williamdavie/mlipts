@@ -8,7 +8,7 @@ from ase.atoms import Atoms
 from itertools import product
 from ase.io import read,write
 from mlipts.similarity.pdd import PDD
-from mlipts.similarity.emd import EMD
+from mlipts.similarity.emd import EMD, cached_EMD
 
 def smart_group_calcs(calc_dirs: list[str], 
                       ngroups: int, 
@@ -38,7 +38,6 @@ def smart_group_calcs(calc_dirs: list[str],
     calc_dirs_init: list[str]
         a list of paths corrosponding to the starting configurations.
     '''
-    
     print('---------------------------------------------------------------------------')
     print('Beginning to sort configs for smart convergence. This process can be costly')
     print('---------------------------------------------------------------------------')
@@ -70,6 +69,7 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     counts = np.zeros(ngroups,dtype=np.int16)
     available_mask = np.ones(len(configs), dtype=bool) #mask used configs.
     all_pdds = [PDD(c.positions, c.cell, k) for c in configs]
+    emd_cache = {}
     # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
     for i,config in enumerate(configs):
@@ -89,7 +89,6 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
     while np.any(counts < group_size-1):
         progress = np.sum(counts+1)/len(configs) * 100
         print(f"\rProgress: {(round(progress,1))}%", end="")
-
         config_to_append = 0
         config_to_push_back = 0
         min_score = 1 # max value of the emd.
@@ -98,9 +97,7 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, expected_motif: np.nd
                 continue
             for j,end_index in enumerate(end_points):
                 if counts[j] != (group_size-1): 
-                    PDD1 = all_pdds[i]
-                    PDD2 = all_pdds[end_index]
-                    emd = EMD(PDD1,PDD2)
+                    emd = cached_EMD(i,end_index,all_pdds,emd_cache)
                     cell_diff_score = np.linalg.norm(configs[i].cell - configs[end_index].cell) / cell_norm
                     score = 0.9 * cell_diff_score + 0.1 * emd
                     if score <= min_score:

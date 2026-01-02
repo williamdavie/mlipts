@@ -45,6 +45,19 @@ def EMD(pdd_S: np.ndarray, pdd_Q: np.ndarray) -> float:
     return emd_v_scipy(wS,wQ,D_SQ)
 
 
+def cached_EMD(i: int, j: int, 
+               pdds: list[np.ndarray],
+               emd_cache: dict) -> float:
+    '''
+    Caching the emd (trading memory for speed up), stores the emd in a dictionary to be re-used when required. 
+    '''
+    
+    key = (i,j) if i <= j else(j,i)
+    if key not in emd_cache:
+        emd_cache[key] = EMD(pdds[i],pdds[j])
+    else:
+        pass
+    return emd_cache[key]   
 
 def EMD_hierarchy(PDDs: np.ndarray) -> None:
     '''
