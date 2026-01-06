@@ -102,6 +102,7 @@ class ActiveLearn():
             script+='for ((i=0; i<num_configs; i++)); do\nconfig="${configs[i]}"\n'
             script+='echo "Training model with configuration $config"\n'
             script+=cmd_line + ' $config\n'
+            script+=f'done\n'
                 
             with open(f'{outdir}/train_script_#{i}','w') as f:
                 f.write(header)
@@ -115,7 +116,6 @@ class ActiveLearn():
                 print(f'You opted not to batch the submission script, it can batched via the working directory with cmd line: \n sbatch {outdir}/train_script_#{i}')
 
         return None
-    
     
     
     # generates a set of lammps calculations to use the newly trained models

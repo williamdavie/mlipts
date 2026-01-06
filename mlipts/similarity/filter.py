@@ -17,6 +17,10 @@ def filter_by_emd(configs: list[Atoms], tol: float, k: int, show_dendrograms: bo
     filters a set of configurations by earth movers distance according to a tolerance 
     '''
     
+    print('---------------------------------------------------------------------------------------')
+    print(f'Beginning to filter {len(configs)} configurations by EMD, this process can be costly.')
+    print('---------------------------------------------------------------------------------------')
+    
     PDDs = atoms_configs_PDDs(configs,k)
     emds = []
     emds_filtered = []

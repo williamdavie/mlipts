@@ -9,7 +9,7 @@ from itertools import product
 from ase.io import read,write
 from mlipts.similarity.pdd import PDD
 from mlipts.similarity.emd import EMD, cached_EMD
-from mlipts.atom_tools import sort_configs_by_volume
+from mlipts.utils import sort_configs_by_volume
 
 def smart_group_calcs(calc_dirs: list[str], 
                       ngroups: int, 

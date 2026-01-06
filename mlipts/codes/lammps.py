@@ -43,8 +43,12 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
         list of atomic configurations fetched from dump file. Returned as a list of ase.Atoms types.
     '''
     
-    outdir = list(Path(outdir).glob('md.*'))
-    md_output = open(outdir[0],'r').read()
+    outdir_list = list(Path(outdir).glob('md.*'))
+    if outdir_list: 
+        md_output = open(outdir_list[0],'r').read()
+    else:
+        print(f'lammps output file not found in {outdir}.')
+        return [] # if output not found just give back nothing.
     split_lines = md_output.splitlines()
     
     timesteps = [] # snapshot time steps.
@@ -243,7 +247,7 @@ class lammpsBuild():
         return None
     
     
-    def generate_calculations(self, label: str='lammps', outdir: str='.') -> None:
+    def generate_calculations(self, label: str='lammps', outdir: str='.',random_seed: bool=True) -> None:
         '''
         Given variables and a base directory, a set of new calculation directories are generated.
         '''
@@ -282,6 +286,9 @@ class lammpsBuild():
                 
             new_input_str = "\n".join(new_input_str)
             
+            if random_seed:
+                new_input_str = set_random_velocity_seed(new_input_str)
+            
             self.__write_calculation__(new_dir_name,new_input_str,outdir)
             
         return None
@@ -304,3 +311,27 @@ class lammpsBuild():
         print(f'Calculation directory generated: {new_dir}')
         
         return None
+    
+
+def set_random_velocity_seed(input_str: str):
+    '''
+    If number of intergers in the 
+    '''
+        
+    input_lines = input_str.splitlines()
+    count = 0
+    new_input_str = []
+    for i,line in enumerate(input_lines):
+        line_split = line.split()
+        if line_split: 
+            if line_split[0] == 'velocity':
+                if '£seed' in line:
+                    line_split = [str(np.random.randint(1,999_999)) if x == '£seed' else x for x in line_split]
+                else:
+                    raise ValueError('Tried to set a random velocity seed but could not find the keyword "£seed" in the lammps input file.')
+                
+        new_line = " ".join(line_split)
+        new_input_str.append(new_line)
+        
+    return "\n".join(new_input_str)
+        

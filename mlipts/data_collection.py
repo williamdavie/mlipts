@@ -51,7 +51,7 @@ class DataCollection():
                               MD_base_dir: str, 
                               variables: dict,
                               MDcode: str='lammps',
-                              outdir: str='.') -> None:
+                              outdir: str='MD_calculations') -> None:
         '''
         Generates a set of directories for Molecular Dynamics simulations given the parameters set in MD_base. 
         
@@ -150,7 +150,6 @@ class DataCollection():
                          tol: float, 
                          method: str='emd',
                          auto: bool=False, 
-                         k: int=20, 
                          show_dendrograms: bool=False) -> None:
         '''
         Removes some configurations from set of active MD configs if they are too similar to eachother. The similarity between configurations is caclulated using a distance metric defined by method.
@@ -174,6 +173,9 @@ class DataCollection():
             self.fetch_MD_configs_from_calcs()
         
         if method == 'emd':
+            k = input('You opted to filter by earth movers distance, enter number of neighbours (k) to be considered: ')
+            try: k = int(k)
+            except: raise ValueError('k must be an interger.')
             new_configs, inds = filter.filter_by_emd(self.active_MD_configs,tol,k=k,show_dendrograms=show_dendrograms)
         elif method not in __diffmethods__:
             raise ValueError(f'Distance metric method {method} not found')
@@ -438,7 +440,7 @@ class DataCollection():
         Saves the active MD configurations.
         '''
         
-        ase.io.write(f'{outname}.xyz',self.active_MD_configs)
+        ase.io.write(outname,self.active_MD_configs)
         
         
     def set_init_QM_dirs(self, outdir: str='./QM_calculations') -> None:
