@@ -12,6 +12,7 @@ import numpy as np
 from pathlib import Path
 import subprocess
 import ase
+import ase.io
 from mlipts.hpc_submission import hpc_utils
 from mlipts.constants import __architectures__
 
@@ -155,7 +156,7 @@ class ActiveLearn():
                 header += '\n'
                 header += f'source {python_env}/bin/activate\n'
             
-            models = [i for i in all_model_files if 'stagetwo.model' in i]
+            models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
             eval_model_cmd = f'{python_env}/bin/mace_eval_configs --configs {config_file} --model $model --output $model_output\n'
         
         else:
@@ -176,7 +177,7 @@ class ActiveLearn():
             script+=f'models=({models_to_evaluate})\n'
             script+='num_models=${#models[@]}\n'
             script+='for ((i=0; i<num_models; i++)); do\n'
-            script+='model="${models[i]}"\nmodel_output="evaluated_configs_$model\n"'
+            script+='model="${models[i]}"\nmodel_output="evaluated_configs_$i.xyz"\n'
             script+='echo "Evaluating $model"\n'
             script+=eval_model_cmd
             script+=f'done\n'
@@ -249,3 +250,97 @@ def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
 
     def fetch_model_configs():
         return None
+    
+    
+    
+
+class UncertaintyQuantification():
+    
+    def __init__(self, original_sample_file: str, evaluated_config_files: list[str], architecture='mace'):
+        
+        self.original_sample_file = original_sample_file
+        self.evaluated_config_files = evaluated_config_files
+        self.committee_size = len(evaluated_config_files)
+        self.architecture = architecture
+        
+        if architecture == 'mace':
+            self.energy_tag = 'MACE_energy'
+            self.forces_tag = 'MACE_forces'
+        else:
+            raise ValueError(f'Architechture {architecture} not supported')
+        
+        self.original_configs =  ase.io.read(original_sample_file,':')
+        self.n_configs = len(self.original_configs)
+        self.all_configs = np.empty((self.n_configs,self.committee_size),dtype=ase.Atoms)
+        
+        for i in range(self.committee_size):
+            current_configs = ase.io.read(evaluated_config_files[i],':')
+            
+            if len(current_configs) != self.all_configs.shape[0]: 
+                raise ValueError('Files in the committee have a different number of evaluated configurations')
+            
+            self.all_configs[:,i] = current_configs
+            
+    def filter_configs(self, tol: float, method='dubois') -> None:
+        
+        if method == 'dubois':
+            uncertainties = self.dubois_uncertainty()
+        else:
+            raise ValueError(f'Method: {method}, unknown')
+        
+        indices = np.where(uncertainties > tol)[0]
+        
+        new_configs = [self.original_configs[i] for i in indices]
+        
+        ase.io.write(f'active_learning_result.xyz',new_configs)
+        
+        return None
+        
+            
+    def dubois_uncertainty(self) -> tuple:
+    
+        energy_deviations = np.zeros(self.n_configs)
+        force_deviations = np.zeros(self.n_configs)
+        
+        for i in range(self.n_configs):
+            current_configs = self.all_configs[i]
+            energy_deviations[i] = (self.energy_standard_deviation(current_configs))
+            force_deviations[i] = (self.ave_force_standard_deviation(current_configs))
+          
+        all_energy_sd = np.std(energy_deviations)
+        all_force_sd = np.std(force_deviations)
+        
+        dubois_uncertainties = energy_deviations / all_energy_sd + force_deviations / all_force_sd
+            
+        return dubois_uncertainties
+
+
+    def energy_standard_deviation(self,configs: list[ase.Atoms]) -> float:
+        '''
+        Given a list of equal configurations with different model energies, return a standard deviation.
+        '''
+        energies = np.zeros(self.committee_size)
+        for i in range(self.committee_size): energies[i] = configs[i].arrays[self.energy_tag]
+        
+        return np.std(energies)
+    
+
+    def ave_force_standard_deviation(self,configs: list[ase.Atoms]) -> float:
+        '''
+        Given a list of equal configurations with different forces, return a standard deviation.
+        '''
+        n_atoms = configs[0].get_number_of_atoms()
+        forces = np.zeros((self.committee_size,n_atoms,3))
+        
+        for i in range(self.committee_size): forces[i] = configs[i].arrays[self.forces_tag]
+        
+        sds = np.zeros((n_atoms,3)) # list of standard deviations
+        for i in n_atoms:
+            for j in range(3):
+                sd = np.std(forces[:,i,j])
+                sds[i,j] = sd
+        
+        return np.average(sds)
+
+        
+    
