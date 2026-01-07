@@ -547,3 +547,9 @@ def write_run_calculation_scripts(calc_dirs: list[str],
             
     return calc_scripts
             
+            
+def run_labelling():
+    
+    print('==============LABELLING CONFIGURATIONS WITH MLIPTS==============')
+    
+    return None
