@@ -10,6 +10,7 @@ import ase
 import ase.io
 from pathlib import Path
 import subprocess
+import yaml
 from mlipts.codes import lammps, vasp
 from mlipts.hpc_submission import hpc_utils
 from mlipts.similarity import filter,group
@@ -18,13 +19,14 @@ from mlipts.constants import __hpcs__,__diffmethods__,__MDcodes__,__QMcodes__
 
 class DataCollection():
     
-    def __init__(self, atom_types: list[str]):
+    def __init__(self, atom_types: list[str],
+                 hpc_config: str=None, **kwargs):
         '''
         Initialize a DataCollection class. Used to develop a database for training a Machine Learned Interatomic Potential.
         '''
-
-        self.atom_types = atom_types
-        
+        # hpc configuration for writing scripts.
+        self.hpc_config = hpc_utils.load_hpc_config(self,hpc_config, **kwargs)
+            
         '''
         Both MD and QM calculations are stored in states: initialized, active, complete
         
@@ -32,17 +34,13 @@ class DataCollection():
         active: simulation complete, active for usage.
         complete: simulation complete, inactive.
         '''
-        
 
-        self.initialized_MD_dirs = []
-        self.active_MD_dirs = [] # simulation in directory run, active for analysis
+        self.initialized_MD_dirs: list[str] = []
+        self.active_MD_dirs: list[str] = [] # simulation in directory run, active for analysis
         self.active_MD_configs: list[ase.Atoms] = []
-        self.complete_MD = [] # simulation stored as complete, no longer active
-        
-        self.initialized_QM_dirs = []
-        self.active_QM_dirs = []
-        
-        self.MD_submission_count = 0
+
+        self.initialized_QM_dirs: list[str] = []
+        self.active_QM_dirs: list[str] = []
         
         self.QM_base_dir = None
 
@@ -83,17 +81,12 @@ class DataCollection():
         
         return None
     
-    def write_MD_submission_scripts(self, MD_cmd_line: str,
-                                   nodes: int, ranks: int,
-                                   time: str,
+    def write_MD_submission_scripts(self, MD_cmd_line: str, time_per_partition: str,
                                    MDcode: str='lammps',
-                                   hpc: str='archer2',
                                    npartitions: int=1,
                                    scripts_outdir: str='./MD_scripts',
                                    submit: bool=True,
-                                   mark_as_active: bool=True,
-                                   header_str: str=None,
-                                   hpc_account: str=None):
+                                   mark_as_active: bool=True):
         '''
         write submission script for Molecular Dynamics simulations, built for all directories marked 'initialized'. 
         
@@ -119,7 +112,9 @@ class DataCollection():
         
         '''
         # header
-        header = hpc_utils.fetch_hpc_header(hpc=hpc,hpc_account=hpc_account,processor='cpu',nodes=nodes,ranks=ranks,time=time,header_str=header_str)
+        
+        self.hpc_config['time'] = time_per_partition # custom time.
+        header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         # cmds
         if MDcode not in __MDcodes__:
@@ -128,15 +123,12 @@ class DataCollection():
         cmd_scipts = write_run_calculation_scripts(self.initialized_MD_dirs,MD_cmd_line,npartitions=npartitions) # leaving as one partition as default for now but more partitions possible easy addition.
         Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
-            with open (f'{scripts_outdir}/MD_submission_script_#{i}','w') as f:
-                f.write(header)
-                f.write('\n')
-                f.write(cmd)
-                
-            print(f'MD submission script saved to: {scripts_outdir}/MD_submission_script_#{i}')
+            script = hpc_utils.ScriptBuilder(header=header)
+            script.add_cmd_line(cmd)
+            script.write_script(f'{scripts_outdir}/MD_submission_script_#{i}','w')
             
             if submit:
-                subprocess.run(f'sbatch {scripts_outdir}/MD_submission_script_#{i}',shell=True)
+                script.submit_script()
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
@@ -243,21 +235,16 @@ class DataCollection():
         return None
     
     def write_QM_submission_scripts(self, QM_cmd_line: str,
-                                   nodes: int, ranks: int,
-                                   time: str,
+                                   time_per_partition: str,
                                    npartitions: int=1,
                                    save_and_remove: bool=True,
                                    QMcode: str='vasp',
-                                   python_env: str=None,
                                    database_file: str=None,
-                                   hpc: str='archer2',
-                                   hpc_account: str=None,
                                    scripts_outdir: str='./QM_scripts',
                                    submit: bool=True,
                                    smart_convergence: bool=False,
                                    expected_motif: np.ndarray=None,
                                    pilot_calculations: bool=True,
-                                   custom_header_str: str=None,
                                    mark_as_active: bool=True,
                                    calcs_outdir: str='./QM_calculations') -> None:
         '''
@@ -293,7 +280,8 @@ class DataCollection():
         '''
         
         # header
-        header = hpc_utils.fetch_hpc_header(hpc=hpc,hpc_account=hpc_account,processor='cpu',nodes=nodes,ranks=ranks,time=time,header_str=custom_header_str)
+        self.hpc_config['time'] = time_per_partition
+        header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         if not self.initialized_QM_dirs:
             self.set_init_QM_dirs(outdir=calcs_outdir)
@@ -328,16 +316,16 @@ class DataCollection():
                                                    QM_cmd_line,
                                                    npartitions=npartitions,
                                                    save_and_remove=save_and_remove,
-                                                   python_env=python_env,code=QMcode,database_file=database_file,smart_convergence=smart_convergence)
+                                                   python_env=self.hpc_config['python_env'],
+                                                   code=QMcode,database_file=database_file,
+                                                   smart_convergence=smart_convergence)
         Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
-            with open (f'{scripts_outdir}/QM_submission_script_#{i}','w') as f:
-                f.write(header)
-                f.write('\n')
-                f.write(cmd)
-            print(f'QM submission script saved to: {scripts_outdir}/QM_submission_script_#{i}')
+            script = hpc_utils.ScriptBuilder(header=header)
+            script.add_cmd_line(cmd)
+            script.write_script(f'{scripts_outdir}/QM_submission_script_#{i}')
             if submit:
-                subprocess.run(f'sbatch {scripts_outdir}/QM_submission_script_#{i}',shell=True)
+                script.submit_script()
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)

@@ -14,19 +14,27 @@ import subprocess
 import ase
 import ase.io
 from mlipts.hpc_submission import hpc_utils
+from mlipts.data_collection import DataCollection
 from mlipts.constants import __architectures__
 
 class ActiveLearn():
     
-    def __init__(self):
+    def __init__(self, hpc_config: str=None, architecture: str='mace', **kwargs):
         
         self.active_model_config_files: list[str] = []
         self.models_dir: str = None
+        self.hpc_config = hpc_utils.load_hpc_config(self,hpc_config, **kwargs)
+        self.architecture = architecture
+        
+        if self.architecture == 'mace':
+            if not self.hpc_config['python_env']:
+                raise ValueError('To use mace for active learning you must define a python env with mace installed.')
+        elif self.architecture not in __architectures__:
+            raise ValueError(f'Active learning for architechture {architecture} not supported, supported architectures: {__architectures__}') 
         
         return None
     
-    
-    def define_commitee(self, base_config_file: str, n_models: int, outdir: str='model_configs',architecture: str='MACE') -> None:
+    def define_commitee(self, base_config_file: str, n_models: int, outdir: str='model_configs') -> None:
         '''
         Given a model configuration file and the number of desired models, generates a commitee config files, randomizing the seed.
         
@@ -62,18 +70,10 @@ class ActiveLearn():
         return None
     
     # generates submission scipts to train the model
-    def train_commitee(self, hpc: str,
-                       hpc_account: str,
-                       time: str,
-                       processor: str='gpu',
-                       nodes: int=1,
-                       ranks: int=1, # if cpu selected
-                       gpus: int=1, # if gpu selected
+    def train_commitee(self,
+                       time_per_partition: str,
                        npartitions: int=1,
-                       python_env: str=None,
-                       architecture: str='mace',
                        submit: bool=True,
-                       custom_header_str: str=None,
                        outdir: str='scripts'):
         '''
         Generates submission scripts to train the set of models. 
@@ -85,54 +85,44 @@ class ActiveLearn():
             self.fetch_model_configs()
         
         # header
-        header = hpc_utils.fetch_hpc_header(hpc=hpc,hpc_account=hpc_account,processor=processor,nodes=nodes,ranks=ranks,gpus=gpus,time=time,header_str=custom_header_str)
+        self.hpc_config['time'] = time_per_partition
+        header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
-        if architecture == 'mace':
+        if self.architecture == 'mace':
             header += '\n'
-            header += f'source {python_env}/bin/activate\n' # mace is written in python. 
-            cmd_line = f'{python_env}/bin/mace_run_train --config'
-        else:
-            raise ValueError(f'Recieved unkown architechture {architecture}, currently availible architechtures are {__architectures__}')
+            header += f'source {self.hpc_config["python_env"]}/bin/activate\n' # mace is written in python. 
+            cmd_line = f'{self.hpc_config["python_env"]}/bin/mace_run_train --config'
         
         num_calcs_per_submission = int(len(self.active_model_config_files) / npartitions)
         
         for i in range(npartitions):
-            script = ''
+            script = hpc_utils.ScriptBuilder(header=header)
             configs_to_run =''
             for config in self.active_model_config_files[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
                 configs_to_run+=f'{config} '
                 
-            script+=f'configs=({configs_to_run})\n'
-            script+='num_configs=${#configs[@]}\n'
-            script+='for ((i=0; i<num_configs; i++)); do\nconfig="${configs[i]}"\n'
-            script+='echo "Training model with configuration $config"\n'
-            script+=cmd_line + ' $config\n'
-            script+=f'done\n'
+            script.add_cmd_line(f'configs=({configs_to_run})')
+            script.add_cmd_line('num_configs=${#configs[@]}')
+            script.add_cmd_line('for ((i=0; i<num_configs; i++)); do\nconfig="${configs[i]}"')
+            script.add_cmd_line('echo "Training model with configuration $config"')
+            script.add_cmd_line(cmd_line + ' $config')
+            script.add_cmd_line(f'done')
                 
-            with open(f'{outdir}/train_script_#{i}','w') as f:
-                f.write(header)
-                f.write(script)
-                
-            print(f'Submission script saved to {outdir}/train_script_#{i}.')
-            
+            script.write_script(f'{outdir}/train_script_#{i}')
+        
             if submit == True:
-                subprocess.run(f'sbatch {outdir}/train_script_#{i}',shell=True)
-            else:
-                print(f'You opted not to batch the submission script, it can batched via the working directory with cmd line: \n sbatch {outdir}/train_script_#{i}')
+                script.submit_script()
 
         return None
     
-    def evaluate_committee(self,config_file: str,
-                           hpc_account: str,
-                           time: str,
-                           processor: str='gpu',
-                           nodes: int=1,
-                           ranks: int=1, # if cpu selected
-                           gpus: int=1, # if gpu selected
+    def evaluate_committee(self,
+                           time_per_partition: str,
                            npartitions: int=1,
-                           python_env: str=None,
-                           architecture: str='mace',
-                           hpc: str='archer2',
+                           config_file: str=None,
+                           MD_base_dir: str=None,
+                           MD_variables: str=None, # need to find a way of reducing all of this mess... 
+                           atom_types: list[str]=None,
+                           MDcode: list[str]='lammps',
                            submit: bool=True,
                            custom_header_str: str=None,
                            models_dir: str=None, evaluted_outdir: str='evaluated_samples', script_outdir='scripts'):
@@ -140,7 +130,8 @@ class ActiveLearn():
         Given a config file, evaluates the energy and forces on each configuration using each model in the committee. 
         '''
         
-        header = hpc_utils.fetch_hpc_header(hpc=hpc,hpc_account=hpc_account,processor=processor,nodes=nodes,ranks=ranks,gpus=gpus,time=time,header_str=custom_header_str)
+        self.hpc_config['time'] = time_per_partition
+        header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         if (self.models_dir is None and models_dir is None) or not Path(models_dir).exists():
             raise ValueError('You asked to evaluate a committee models but have not specified where the models are located')
@@ -149,89 +140,34 @@ class ActiveLearn():
     
         all_model_files = [str(p) for p in Path(self.models_dir).iterdir()]
         
-        if architecture == 'mace':
-            if python_env is None:
-                raise ValueError('Mace evaluation requires specification of a python enviroment with mace and mlipts installed.')
-            else:
-                header += '\n'
-                header += f'source {python_env}/bin/activate\n'
+        if self.architecture == 'mace':
+            header += '\n'
+            header += f'source {self.hpc_config["python_env"]}/bin/activate\n'
             
             models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
-            eval_model_cmd = f'{python_env}/bin/mace_eval_configs --configs {config_file} --model $model --output $model_output\n'
-        
-        else:
-            raise ValueError(f'Architechture {architecture} not supported')
+            eval_model_cmd = f'{self.hpc_config["python_env"]}/bin/mace_eval_configs --configs {config_file} --model $model --output $model_output'
         
         num_calcs_per_submission = int(len(models) / npartitions)
         
-        # header
-       
-        # script
         
         for i in range(npartitions):
-            script = ''
+            script = hpc_utils.ScriptBuilder(header=header)
             models_to_evaluate = ''
             for model in models[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
                 models_to_evaluate+=f'{model} '
                 
-            script+=f'models=({models_to_evaluate})\n'
-            script+='num_models=${#models[@]}\n'
-            script+='for ((i=0; i<num_models; i++)); do\n'
-            script+='model="${models[i]}"\nmodel_output="evaluated_configs_$i.xyz"\n'
-            script+='echo "Evaluating $model"\n'
-            script+=eval_model_cmd
-            script+=f'done\n'
+            script.add_cmd_line(f'models=({models_to_evaluate})')
+            script.add_cmd_line('num_models=${#models[@]}')
+            script.add_cmd_line('for ((i=0; i<num_models; i++)); do')
+            script.add_cmd_line('model="${models[i]}"\nmodel_output="evaluated_configs_$i.xyz"')
+            script.add_cmd_line('echo "Evaluating $model"')
+            script.add_cmd_line(eval_model_cmd)
+            script.add_cmd_line('done')
             
-            output_str = f'{script_outdir}/evaluate_script_#{i}'
-            
-            with open(output_str,'w') as f:
-                f.write(header)
-                f.write(script)
-                
-                print(f'Submission script saved to {output_str}.')
+            script.write_script(f'{script_outdir}/evaluate_script_#{i}')
             
             if submit == True:
-                subprocess.run(f'sbatch {output_str}',shell=True)
-            else:
-                print(f'You opted not to batch the submission script, it can batched via the working directory with cmd line: \n sbatch {output_str}')
-
-        
-                
-            
-def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
-    '''
-    Given a set of base_config, training, test data, runs the full active learning workflow from start to finish. The result is a set of configurations to be labelled. 
-    
-    Steps
-    -----
-    1. A commitee of configs are generated.
-    2. A commitee of models are trained.
-    3. A set of new configurations are sampled and evaluated by the committee.
-    4. Uncertainty is quantified and the new configurations are given as output.
-    '''       
-
-    print('==============ACTIVE LEARNING WITH MLIPTS==============')
-    print('\n')
-    print('------------------Committee setup---------------------')
-    committee_size = input('Input committee size: ')
-    base_config = input('Input a configuration file: ')
-    print('Copying {base_config} {commitee_size} times with a random seed.')
-    print('Setting up a script to begin model training.')
-    print('------------Sampling new configurations---------------------')
-    
-    
-    return None
-        
-        
-
-        
-            
-            
-            
-        
-            
-        
-        
+                script.submit_script()
     
     # generates the submission scripts for above. saves the data from each model to xyz
     def test_suite_submission():
@@ -250,8 +186,6 @@ def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
 
     def fetch_model_configs():
         return None
-    
-    
     
 
 class UncertaintyQuantification():
@@ -320,7 +254,7 @@ class UncertaintyQuantification():
         Given a list of equal configurations with different model energies, return a standard deviation.
         '''
         energies = np.zeros(self.committee_size)
-        for i in range(self.committee_size): energies[i] = configs[i].arrays[self.energy_tag]
+        for i in range(self.committee_size): energies[i] = configs[i].info[self.energy_tag]
         
         return np.std(energies)
     
@@ -329,13 +263,13 @@ class UncertaintyQuantification():
         '''
         Given a list of equal configurations with different forces, return a standard deviation.
         '''
-        n_atoms = configs[0].get_number_of_atoms()
+        n_atoms = len(configs[0])
         forces = np.zeros((self.committee_size,n_atoms,3))
         
         for i in range(self.committee_size): forces[i] = configs[i].arrays[self.forces_tag]
         
         sds = np.zeros((n_atoms,3)) # list of standard deviations
-        for i in n_atoms:
+        for i in range(n_atoms):
             for j in range(3):
                 sd = np.std(forces[:,i,j])
                 sds[i,j] = sd
@@ -343,4 +277,30 @@ class UncertaintyQuantification():
         return np.average(sds)
 
         
+    
+
+
+def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
+    '''
+    Given a set of base_config, training, test data, runs the full active learning workflow from start to finish. The result is a set of configurations to be labelled. 
+    
+    Steps
+    -----
+    1. A commitee of configs are generated.
+    2. A commitee of models are trained.
+    3. A set of new configurations are sampled and evaluated by the committee.
+    4. Uncertainty is quantified and the new configurations are given as output.
+    '''       
+
+    print('==============ACTIVE LEARNING WITH MLIPTS==============')
+    print('\n')
+    print('------------------Committee setup---------------------')
+    committee_size = input('Input committee size: ')
+    base_config = input('Input a configuration file: ')
+    print('Copying {base_config} {commitee_size} times with a random seed.')
+    print('Setting up a script to begin model training.')
+    print('------------Sampling new configurations---------------------')
+    
+    
+    return None
     
