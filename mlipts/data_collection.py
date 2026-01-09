@@ -43,6 +43,8 @@ class DataCollection():
         self.active_QM_dirs: list[str] = []
         
         self.QM_base_dir = None
+        
+        self.submitted_jobs = []
 
         
     def build_MD_calculations(self, 
@@ -125,10 +127,11 @@ class DataCollection():
         for i,cmd in enumerate(cmd_scipts):
             script = hpc_utils.ScriptBuilder(header=header)
             script.add_cmd_line(cmd)
-            script.write_script(f'{scripts_outdir}/MD_submission_script_#{i}','w')
+            script.write_script(f'{scripts_outdir}/MD_submission_script_#{i}',message=False)
             
             if submit:
-                script.submit_script()
+                id = script.submit_script()
+                self.submitted_jobs.append(id)
         
         if mark_as_active:
             self.active_MD_dirs.extend(self.initialized_MD_dirs)
@@ -423,12 +426,12 @@ class DataCollection():
         print(self.active_MD_configs)
         print('Num active configurations: ', len(self.active_MD_configs))
         
-    def save_active_MD_configs(self, outname: str):
+    def save_active_MD_configs(self, output_file: str):
         '''
         Saves the active MD configurations.
         '''
         
-        ase.io.write(outname,self.active_MD_configs)
+        ase.io.write(output_file,self.active_MD_configs)
         
         
     def set_init_QM_dirs(self, outdir: str='./QM_calculations') -> None:

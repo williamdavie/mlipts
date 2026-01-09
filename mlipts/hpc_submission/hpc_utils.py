@@ -11,7 +11,7 @@ from typing import TypedDict, Optional
 from mlipts.hpc_submission import archer2
 from mlipts.constants import __hpcs__
 
-__config_keys__ = ['hpc','hpc_account','nodes','ranks','gpus','time','custom_header']
+__config_keys__ = ['hpc','hpc_account','processor','nodes','ranks','gpus','time','python_env','custom_header','dependencies']
 
 class hpcConfig(TypedDict):
     hpc: str
@@ -23,6 +23,7 @@ class hpcConfig(TypedDict):
     time: str='01:00:00'
     python_env: str
     custom_header: str = None
+    dependencies: list[str]=[]
     
 
 def load_hpc_config(self, hpc_config: str=None, **kwargs) -> hpcConfig:
@@ -40,7 +41,7 @@ def load_hpc_config(self, hpc_config: str=None, **kwargs) -> hpcConfig:
     for key in config_dict:
         if key not in __config_keys__:
             raise ValueError(f'Invalid hpc parameter ({key}) in config file or kwargs, options include: {__config_keys__}')
-        setattr(self, key, hpc_config[key])
+        setattr(self, key, config_dict[key])
     
     return config_dict
     
@@ -50,22 +51,23 @@ def fetch_hpc_header(hpc_config: hpcConfig) -> str:
     Given some hpc parameters returns the header of a submission script. 
     '''
 
-    if hpc_config.hpc == 'archer2':
-        if hpc_config.processor == 'cpu':
-            header = archer2.archer2_submission_template(nodes=hpc_config.nodes,ranks=hpc_config.ranks,time=hpc_config.time,account=hpc_config.hpc_account)
-        elif hpc_config.processor == 'gpu':
-            header = archer2.archer2_gpu_submission_template(account=hpc_config.hpc_account,time=hpc_config.time,gpus=hpc_config.gpus)
+    hpc = hpc_config['hpc']
+    if hpc == 'archer2':
+        if hpc_config['processor'] == 'cpu':
+            header = archer2.archer2_submission_template(nodes=hpc_config['nodes'],ranks=hpc_config['ranks'],time=hpc_config['time'],account=hpc_config['hpc_account'])
+        elif hpc_config['processor'] == 'gpu':
+            header = archer2.archer2_gpu_submission_template(account=hpc_config['hpc_account'],time=hpc_config['time'],gpus=hpc_config['gpus'])
         else:
-            raise ValueError(f'Cannot accept processor named {hpc_config.processor}, choose "cpu" or "gpu".')
+            raise ValueError(f'Cannot accept processor named {hpc_config["processor"]}, choose "cpu" or "gpu".')
     
-    elif hpc_config.hpc == 'custom':
-        if hpc_config.custom_header == None:
+    elif hpc == 'custom':
+        if hpc_config['custom_header'] == None:
             raise ValueError('custom hpc header but no header_str argument provided.')
         else:
-            header = hpc_config.custom_header
+            header = hpc_config['custom_header']
     
-    elif hpc_config.hpc not in __hpcs__:
-        raise ValueError(f'hpc {hpc_config.hpc} not supported.')
+    elif hpc not in __hpcs__:
+        raise ValueError(f'hpc {hpc} not supported.')
     
     return header
 
@@ -88,7 +90,7 @@ class ScriptBuilder():
         self.script_lines.append(cmd_line)
         return None
     
-    def write_script(self, output_path: str):
+    def write_script(self, output_path: str, message: bool=True):
         if self.header == '':
             print("<!> Warning : writing a script with no header.")
         if not self.script_lines:
@@ -100,17 +102,21 @@ class ScriptBuilder():
                 f.write(line + '\n')
                 
         self.output_path = output_path
-                
-        print(f'Job submission script saved to {output_path}.')
+        if message:  
+            print(f'Job submission script saved to {output_path}.')
         
         return None
     
-    def submit_script(self) -> None:
+    def submit_script(self) -> int:
         '''
         submits the script with sbatch
         '''
-        subprocess.run(f'sbatch {self.output_path}',shell=True)
-        return None
+        result = subprocess.run(f'sbatch {self.output_path}',shell=True,capture_output=True,text=True)
+
+        try: return int(result.stdout.split()[-1])
+        except:
+            print('<!> Warning slurm job id not found')
+            return None
     
     def add_loop():
         '''

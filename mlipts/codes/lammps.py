@@ -16,6 +16,7 @@ The user provides a 'base directory' including:
 
 import os, sys
 import shutil
+import ase.io
 from pathlib import Path
 import numpy as np
 import re
@@ -178,6 +179,10 @@ def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -
     return build.new_dirs
 
 
+def append_lammps_calc_to_database(database_file,calc_dir):
+    return None 
+    #ase.io.write(database_file, atoms, format="extxyz", append=True)
+
 class lammpsBuild():
     
     def __init__(self, lammps_base_dir: str, variables: dict) -> None:
@@ -307,8 +312,6 @@ class lammpsBuild():
             
         with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
             f.write(input_str)
-                
-        print(f'Calculation directory generated: {new_dir}')
         
         return None
     

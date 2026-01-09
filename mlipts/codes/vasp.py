@@ -6,8 +6,8 @@ File containing vasp specific functionality. Used to build many vasp calculation
 some functionality may be generalised if other codes are added 
 '''
 
-from ase import Atoms
-from ase.io import read, write
+import ase
+import ase.io
 import numpy as np
 import shutil
 import py4vasp
@@ -16,7 +16,7 @@ from pathlib import Path
 from itertools import product
 
 
-def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, outdir: str) -> str: 
+def build_vasp_calculation(vasp_base_dir: str, config: ase.Atoms, calc_name: str, outdir: str) -> str: 
     '''
     Builds a vasp calculation directory for a given atomic configuration.
     
@@ -47,7 +47,7 @@ def build_vasp_calculation(vasp_base_dir: str, config: Atoms, calc_name: str, ou
     return new_calc_dir
 
 
-def write_POSCAR_str(config: Atoms) -> str:
+def write_POSCAR_str(config: ase.Atoms) -> str:
     '''
     writes a POSCAR string given an atomic configuration.
     '''
@@ -81,24 +81,24 @@ def write_POSCAR_str(config: Atoms) -> str:
 
 
 def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
-    atoms = read(f"{vasp_dir}/vasprun.xml")
+    atoms = ase.io.read(f"{vasp_dir}/vasprun.xml")
     outcar_str = open(f'{vasp_dir}/OUTCAR','r').read()
     if 'aborting loop EDIFF was not reached (unconverged)' in outcar_str:
         print('Self consistency failed, not saving data.')
         return None
-    write(database_file, atoms, format="extxyz", append=True)
+    ase.io.write(database_file, atoms, format="extxyz", append=True)
     return None
 
 
 
-def fetch_configs_vasp(calc_dirs: list[str]) -> list[Atoms]:
+def fetch_configs_vasp(calc_dirs: list[str]) -> list[ase.Atoms]:
     '''
     from a set of directories containing vasp in files, read configs.
     '''
     configs = []
     for dir in calc_dirs:
         if havePOSCAR(dir):
-            atoms = read(f'{dir}/POSCAR')
+            atoms = ase.io.read(f'{dir}/POSCAR')
             configs.append(atoms)
         else:
             print(f'No POSCAR found in directory: {dir}')
@@ -184,7 +184,7 @@ def set_magmom_one_directory(supercell_size: np.ndarray,
     # This function is quite brute force and is oppitunity to optimize.
     
     # define all possible positions
-    atoms = read(f'{vasp_calc_dir}/POSCAR')
+    atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
     basis_vectors = np.array(atoms.cell)/supercell_size
 
     Nx,Ny,Nz = supercell_size[0:3]

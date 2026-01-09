@@ -125,10 +125,12 @@ class ActiveLearn():
                            MDcode: list[str]='lammps',
                            submit: bool=True,
                            custom_header_str: str=None,
-                           models_dir: str=None, evaluted_outdir: str='evaluated_samples', script_outdir='scripts'):
+                           models_dir: str=None, evaluted_outdir: str='evaluated_samples', script_outdir='scripts',
+                           dependencies: list[str]=[]):
         '''
         Given a config file, evaluates the energy and forces on each configuration using each model in the committee. 
         '''
+            
         
         self.hpc_config['time'] = time_per_partition
         header = hpc_utils.fetch_hpc_header(self.hpc_config)
@@ -168,6 +170,14 @@ class ActiveLearn():
             
             if submit == True:
                 script.submit_script()
+
+    def uncertainty_script(self,tol,time: str='00:20:00',dependacy=None):
+        '''
+        Writes a short script to quantify uncertainty on an hpc.
+        '''
+        self.hpc_config['time'] = time
+        header = hpc_utils.fetch_hpc_header(self.hpc_config)
+        
     
     # generates the submission scripts for above. saves the data from each model to xyz
     def test_suite_submission():
@@ -176,10 +186,6 @@ class ActiveLearn():
     
     
     # filters the configs from each model and defines a final training set. (Then data class can be used)
-    def quantify_uncertainty():
-        return None
-    
-    
     def run_train():
         return None
     
@@ -215,7 +221,7 @@ class UncertaintyQuantification():
             
             self.all_configs[:,i] = current_configs
             
-    def filter_configs(self, tol: float, method='dubois') -> None:
+    def filter_configs(self, tol: float, max_configs: int=None, min_configs: int=None,method='dubois',selection='largest') -> None:
         
         if method == 'dubois':
             uncertainties = self.dubois_uncertainty()
@@ -223,6 +229,13 @@ class UncertaintyQuantification():
             raise ValueError(f'Method: {method}, unknown')
         
         indices = np.where(uncertainties > tol)[0]
+        if max_configs:
+            if len(indices) > max_configs:
+                indices = np.argsort(uncertainties)[::-1][0:max_configs]
+            
+        elif min_configs:
+            if len(indices) < min_configs:
+                indices = np.argsort(uncertainties)[::-1][0:min_configs]
         
         new_configs = [self.original_configs[i] for i in indices]
         
@@ -276,11 +289,10 @@ class UncertaintyQuantification():
         
         return np.average(sds)
 
-        
     
 
 
-def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
+def run_active_learn(**kwargs) -> list[ase.Atoms]:
     '''
     Given a set of base_config, training, test data, runs the full active learning workflow from start to finish. The result is a set of configurations to be labelled. 
     
@@ -288,19 +300,35 @@ def run_active_learn(hpc, hpc_account) -> list[ase.Atoms]:
     -----
     1. A commitee of configs are generated.
     2. A commitee of models are trained.
-    3. A set of new configurations are sampled and evaluated by the committee.
-    4. Uncertainty is quantified and the new configurations are given as output.
+    3. A set of new configurations are sampled.
+    4. New configurations are evaluated by the committee.
+    5. Uncertainty is quantified and the new configurations are given as output.
     '''       
 
     print('==============ACTIVE LEARNING WITH MLIPTS==============')
     print('\n')
+    print('Architechture being used: MACE')
+    print('\n')
+    hpc_config = input('Input name of HPC configuration file: ')
+    activelearning = ActiveLearn(hpc_config,'mace',**kwargs)
     print('------------------Committee setup---------------------')
     committee_size = input('Input committee size: ')
-    base_config = input('Input a configuration file: ')
-    print('Copying {base_config} {commitee_size} times with a random seed.')
+    base_config = input('Input name of configuration file: ')
+    activelearning.define_commitee(base_config,committee_size)
+    print(f'Copying {base_config} {committee_size} times with a random seed.')
+    print('\n')
     print('Setting up a script to begin model training.')
+    training_job_id = 0 
+    print(f'Training at job id: ')
     print('------------Sampling new configurations---------------------')
-    
+    defined = input('Have you already sampled a new configurations ("y"/"n") ')
+    if defined.capitalize() == 'Y':
+        new_configs_file = input('Input location of new configurations file: ')
+    else: 
+        sampling_job_id = 0
+    print('------------Evaluate models and quantify uncertainty--------------------')
+    output_name = input('Input')
+    print(f'Setting up scripts to evaluate models with dependacies: {training_job_id, sampling_job_id}')
     
     return None
     
