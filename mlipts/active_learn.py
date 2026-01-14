@@ -118,21 +118,16 @@ class ActiveLearn():
     def evaluate_committee(self,
                            time_per_partition: str,
                            npartitions: int=1,
-                           config_file: str=None,
-                           MD_base_dir: str=None,
-                           MD_variables: str=None, # need to find a way of reducing all of this mess... 
-                           atom_types: list[str]=None,
-                           MDcode: list[str]='lammps',
+                           atomic_config_file: str='MD_samples.xyz', # consistency with data_collection class.
                            submit: bool=True,
-                           custom_header_str: str=None,
-                           models_dir: str=None, evaluted_outdir: str='evaluated_samples', script_outdir='scripts',
+                           models_dir: str=None, script_outdir='scripts',
                            dependencies: list[str]=[]):
         '''
         Given a config file, evaluates the energy and forces on each configuration using each model in the committee. 
         '''
             
-        
         self.hpc_config['time'] = time_per_partition
+        self.hpc_config['dependencies'] = dependencies
         header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         if (self.models_dir is None and models_dir is None) or not Path(models_dir).exists():
@@ -140,14 +135,16 @@ class ActiveLearn():
         elif models_dir is not None:
             self.models_dir = models_dir 
     
+        print(self.models_dir)
         all_model_files = [str(p) for p in Path(self.models_dir).iterdir()]
+        print(all_model_files)
         
         if self.architecture == 'mace':
             header += '\n'
             header += f'source {self.hpc_config["python_env"]}/bin/activate\n'
             
             models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
-            eval_model_cmd = f'{self.hpc_config["python_env"]}/bin/mace_eval_configs --configs {config_file} --model $model --output $model_output'
+            eval_model_cmd = f'{self.hpc_config["python_env"]}/bin/mace_eval_configs --configs {atomic_config_file} --model $model --output $model_output'
         
         num_calcs_per_submission = int(len(models) / npartitions)
         

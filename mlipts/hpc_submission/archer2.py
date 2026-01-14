@@ -16,7 +16,7 @@ def archer2_submission_template(nodes: int, ranks: int, time: str, account: str,
         qos = 'standard'
         
     if dependencies:
-        dependency_str = '#SBATCH --dependency=afterok:'
+        dependency_str = '#SBATCH --dependency=afterok'
         for id in dependencies:
             dependency_str += f':{id}'
     else:
@@ -49,7 +49,7 @@ module load craype-x86-milan'''
         module_load_str = ''
         
     if dependencies:
-        dependency_str = '#SBATCH --dependency=afterok:'
+        dependency_str = '#SBATCH --dependency=afterok'
         for id in dependencies:
             dependency_str += f':{id}'
     else:
@@ -64,7 +64,7 @@ module load craype-x86-milan'''
 #SBATCH --nodes={nodes}
 #SBATCH --gpus={gpus}
 #SBATCH --time={time}
-
+{dependency_str}
 {module_load_str}
     '''
     

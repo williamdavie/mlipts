@@ -54,9 +54,9 @@ def fetch_hpc_header(hpc_config: hpcConfig) -> str:
     hpc = hpc_config['hpc']
     if hpc == 'archer2':
         if hpc_config['processor'] == 'cpu':
-            header = archer2.archer2_submission_template(nodes=hpc_config['nodes'],ranks=hpc_config['ranks'],time=hpc_config['time'],account=hpc_config['hpc_account'])
+            header = archer2.archer2_submission_template(nodes=hpc_config['nodes'],ranks=hpc_config['ranks'],time=hpc_config['time'],account=hpc_config['hpc_account'],dependencies=hpc_config['dependencies'])
         elif hpc_config['processor'] == 'gpu':
-            header = archer2.archer2_gpu_submission_template(account=hpc_config['hpc_account'],time=hpc_config['time'],gpus=hpc_config['gpus'])
+            header = archer2.archer2_gpu_submission_template(account=hpc_config['hpc_account'],time=hpc_config['time'],gpus=hpc_config['gpus'],dependencies=hpc_config['dependencies'])
         else:
             raise ValueError(f'Cannot accept processor named {hpc_config["processor"]}, choose "cpu" or "gpu".')
     
@@ -112,7 +112,7 @@ class ScriptBuilder():
         submits the script with sbatch
         '''
         result = subprocess.run(f'sbatch {self.output_path}',shell=True,capture_output=True,text=True)
-
+        print(result.stdout)
         try: return int(result.stdout.split()[-1])
         except:
             print('<!> Warning slurm job id not found')

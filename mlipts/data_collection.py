@@ -86,9 +86,12 @@ class DataCollection():
     def write_MD_submission_scripts(self, MD_cmd_line: str, time_per_partition: str,
                                    MDcode: str='lammps',
                                    npartitions: int=1,
-                                   scripts_outdir: str='./MD_scripts',
+                                   scripts_outdir: str='scripts',
                                    submit: bool=True,
-                                   mark_as_active: bool=True):
+                                   mark_as_active: bool=True,
+                                   save_and_remove: bool=True,
+                                   database_file: str='MD_samples.xyz',
+                                   dependencies: list[str]=[]):
         '''
         write submission script for Molecular Dynamics simulations, built for all directories marked 'initialized'. 
         
@@ -116,13 +119,19 @@ class DataCollection():
         # header
         
         self.hpc_config['time'] = time_per_partition # custom time.
+        self.hpc_config['dependencies'] = dependencies
         header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         # cmds
         if MDcode not in __MDcodes__:
             raise ValueError(f'MD code {MDcode} not supported.')
         
-        cmd_scipts = write_run_calculation_scripts(self.initialized_MD_dirs,MD_cmd_line,npartitions=npartitions) # leaving as one partition as default for now but more partitions possible easy addition.
+        cmd_scipts = write_run_calculation_scripts(self.initialized_MD_dirs,
+                                                   MD_cmd_line,
+                                                   npartitions=npartitions,
+                                                   save_and_remove=save_and_remove,
+                                                   database_file=database_file,
+                                                   code=MDcode,python_env=self.hpc_config['python_env']) # leaving as one partition as default for now but more partitions possible easy addition.
         Path(scripts_outdir).mkdir(exist_ok=True)
         for i,cmd in enumerate(cmd_scipts):
             script = hpc_utils.ScriptBuilder(header=header)

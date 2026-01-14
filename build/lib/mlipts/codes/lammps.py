@@ -16,6 +16,7 @@ The user provides a 'base directory' including:
 
 import os, sys
 import shutil
+import ase.io
 from pathlib import Path
 import numpy as np
 import re
@@ -24,7 +25,7 @@ from ase import Atoms
 from typing import Optional 
 
 
-def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=True) -> list[Atoms]:
+def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
     '''
     Read lammps *md output file.
     
@@ -43,8 +44,12 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
         list of atomic configurations fetched from dump file. Returned as a list of ase.Atoms types.
     '''
     
-    outdir = list(Path(outdir).glob('md.*'))
-    md_output = open(outdir[0],'r').read()
+    outdir_list = list(Path(outdir).glob('md.*'))
+    if outdir_list: 
+        md_output = open(outdir_list[0],'r').read()
+    else:
+        print(f'lammps output file not found in {outdir}.')
+        return [] # if output not found just give back nothing.
     split_lines = md_output.splitlines()
     
     timesteps = [] # snapshot time steps.
@@ -88,7 +93,9 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
             x_index = args.index('x')
             y_index = args.index('y')
             z_index = args.index('z')
+            element_index = args.index('element')
             
+            these_labels = []
             for atom in range(0,num_atoms):
                 atom_line_split = split_lines[i+atom+1].split()
                 types[atom] = int(atom_line_split[type_index]) 
@@ -97,19 +104,24 @@ def read_lammps_output(outdir: str, atom_types: list[str], pbc: Optional[bool]=T
                 atomic_positions[atom,1] = float(atom_line_split[y_index]) / lattice_vectors[1,1]
                 atomic_positions[atom,2] = float(atom_line_split[z_index]) / lattice_vectors[2,2]
                 
+                these_labels.append(atom_line_split[element_index])
+            
+            type_labels.append(these_labels)
+                
             # as required by vasp, must be type sorted. 
             types_sorted = np.argsort(types)
             types,type_counts = np.unique(types,return_counts=True)
             num_types = np.max(types)
             all_atomic_positions.append(atomic_positions[types_sorted])
 
-    for i in types:
-        type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
-        
+   # for i in types:
+      #  type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
+    
     configs: list[Atoms] = []
     for i in range(num_snapshots):
-        config = Atoms(symbols=type_labels,scaled_positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
+        config = Atoms(symbols=type_labels[i],scaled_positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
         configs.append(config)
+        
         
     return configs
 
@@ -173,6 +185,12 @@ def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -
     build.generate_calculations(outdir=outdir)
     return build.new_dirs
 
+
+def append_lammps_calc_to_database(database_file: str, calc_dir: str):
+    
+    atoms = read_lammps_output(calc_dir)
+
+    ase.io.write(database_file, atoms, format="extxyz", append=True)
 
 class lammpsBuild():
     
@@ -243,7 +261,7 @@ class lammpsBuild():
         return None
     
     
-    def generate_calculations(self, label: str='lammps', outdir: str='.') -> None:
+    def generate_calculations(self, label: str='lammps', outdir: str='.',random_seed: bool=True) -> None:
         '''
         Given variables and a base directory, a set of new calculation directories are generated.
         '''
@@ -282,6 +300,9 @@ class lammpsBuild():
                 
             new_input_str = "\n".join(new_input_str)
             
+            if random_seed:
+                new_input_str = set_random_velocity_seed(new_input_str)
+            
             self.__write_calculation__(new_dir_name,new_input_str,outdir)
             
         return None
@@ -300,7 +321,29 @@ class lammpsBuild():
             
         with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
             f.write(input_str)
-                
-        print(f'Calculation directory generated: {new_dir}')
         
         return None
+    
+
+def set_random_velocity_seed(input_str: str):
+    '''
+    If number of intergers in the 
+    '''
+        
+    input_lines = input_str.splitlines()
+    count = 0
+    new_input_str = []
+    for i,line in enumerate(input_lines):
+        line_split = line.split()
+        if line_split: 
+            if line_split[0] == 'velocity':
+                if '£seed' in line:
+                    line_split = [str(np.random.randint(1,999_999)) if x == '£seed' else x for x in line_split]
+                else:
+                    raise ValueError('Tried to set a random velocity seed but could not find the keyword "£seed" in the lammps input file.')
+                
+        new_line = " ".join(line_split)
+        new_input_str.append(new_line)
+        
+    return "\n".join(new_input_str)
+        

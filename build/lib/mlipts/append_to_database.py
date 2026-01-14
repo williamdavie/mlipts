@@ -10,6 +10,7 @@ import numpy as np
 import sys,os
 from mlipts.constants import __MDcodes__,__QMcodes__
 from mlipts.codes.vasp import append_vasp_calc_to_database
+from mlipts.codes.lammps import append_lammps_calc_to_database
 
 def append_to_database(database_file: str, calc_dir: str, code: str='vasp'):
     '''
@@ -18,6 +19,8 @@ def append_to_database(database_file: str, calc_dir: str, code: str='vasp'):
     
     if code == 'vasp':
         append_vasp_calc_to_database(database_file,calc_dir)
+    if code == 'lammps':
+        append_lammps_calc_to_database(database_file,calc_dir)
     else:
         raise ValueError(f'code {code} not supported.')
     
