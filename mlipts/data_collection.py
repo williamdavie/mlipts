@@ -258,7 +258,8 @@ class DataCollection():
                                    expected_motif: np.ndarray=None,
                                    pilot_calculations: bool=True,
                                    mark_as_active: bool=True,
-                                   calcs_outdir: str='./QM_calculations') -> None:
+                                   calcs_outdir: str='./QM_calculations',
+                                   dependencies: list[str] = []) -> None:
         '''
         Build submission script for Quantum Mechanical (first principle) simulations, built for all directories marked 'initialized'. 
         
@@ -292,6 +293,7 @@ class DataCollection():
         '''
         
         # header
+        self.hpc_config['dependencies'] = dependencies
         self.hpc_config['time'] = time_per_partition
         header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
@@ -534,7 +536,7 @@ def write_run_calculation_scripts(calc_dirs: list[str],
         current_dirs=''
         for dir in calc_dirs[int(i*num_calcs_per_submission):int((i+1)*num_calcs_per_submission)]:
             current_dirs+=f'{dir} '
-            
+        script+='\n'
         script+=f'directories=({current_dirs})\n'
         script+='num_dirs=${#directories[@]}\n'
         script+='for ((i=0; i<num_dirs; i++)); do\ndir="${directories[i]}"\n'

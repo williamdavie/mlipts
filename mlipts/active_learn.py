@@ -32,6 +32,8 @@ class ActiveLearn():
         elif self.architecture not in __architectures__:
             raise ValueError(f'Active learning for architechture {architecture} not supported, supported architectures: {__architectures__}') 
         
+        self.expected_final_models = []
+        
         return None
     
     def define_commitee(self, base_config_file: str, n_models: int, outdir: str='model_configs') -> None:
@@ -58,7 +60,7 @@ class ActiveLearn():
             
         Path(outdir).mkdir(exist_ok=True)
         for i in range(n_models):
-            base_config['name'] = f'model_#{i}'
+            base_config['name'] = f'model_{i}'
             base_config['seed'] = np.random.randint(0,1000)
             new_config_file = outdir+f'/config_#{i}'
             
@@ -67,6 +69,8 @@ class ActiveLearn():
                 
             self.active_model_config_files.append(new_config_file)
             
+        self.expected_final_models = [f'model_{i}_stagetwo.model' for i in range(n_models)]
+            
         return None
     
     # generates submission scipts to train the model
@@ -74,7 +78,8 @@ class ActiveLearn():
                        time_per_partition: str,
                        npartitions: int=1,
                        submit: bool=True,
-                       outdir: str='scripts'):
+                       outdir: str='scripts',
+                       dependencies: list[str]=[]):
         '''
         Generates submission scripts to train the set of models. 
         '''
@@ -86,12 +91,14 @@ class ActiveLearn():
         
         # header
         self.hpc_config['time'] = time_per_partition
+        self.hpc_config['dependencies'] = dependencies
         header = hpc_utils.fetch_hpc_header(self.hpc_config)
         
         if self.architecture == 'mace':
             header += '\n'
             header += f'source {self.hpc_config["python_env"]}/bin/activate\n' # mace is written in python. 
             cmd_line = f'{self.hpc_config["python_env"]}/bin/mace_run_train --config'
+        
         
         num_calcs_per_submission = int(len(self.active_model_config_files) / npartitions)
         
@@ -112,6 +119,7 @@ class ActiveLearn():
         
             if submit == True:
                 script.submit_script()
+                
 
         return None
     
@@ -121,10 +129,14 @@ class ActiveLearn():
                            atomic_config_file: str='MD_samples.xyz', # consistency with data_collection class.
                            submit: bool=True,
                            models_dir: str=None, script_outdir='scripts',
-                           dependencies: list[str]=[]):
+                           dependencies: list[str]=[],
+                           create_lammps_model: bool=True):
         '''
         Given a config file, evaluates the energy and forces on each configuration using each model in the committee. 
         '''
+        
+        Path(f'{script_outdir}').mkdir(exist_ok=True)
+        Path('evaluated_configs').mkdir(exist_ok=True)
             
         self.hpc_config['time'] = time_per_partition
         self.hpc_config['dependencies'] = dependencies
@@ -135,16 +147,24 @@ class ActiveLearn():
         elif models_dir is not None:
             self.models_dir = models_dir 
     
-        print(self.models_dir)
+
         all_model_files = [str(p) for p in Path(self.models_dir).iterdir()]
-        print(all_model_files)
         
         if self.architecture == 'mace':
             header += '\n'
             header += f'source {self.hpc_config["python_env"]}/bin/activate\n'
             
             models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
+            if models == []:
+                print(f'<!> Warning did not find stage two models in directory /{self.models_dir}, assuming model names automatically, this could fail.')
+                models = [f'{self.models_dir}/{self.expected_final_models[i]}' for i in range(len(self.expected_final_models))]
+            
             eval_model_cmd = f'{self.hpc_config["python_env"]}/bin/mace_eval_configs --configs {atomic_config_file} --model $model --output $model_output'
+        
+        if create_lammps_model:
+            lmps_model_cmd = 'echo "Creating a lammps model"\npython -m mace.cli.create_lammps_model $model'
+        else:
+            lmps_model_cmd = ''
         
         num_calcs_per_submission = int(len(models) / npartitions)
         
@@ -158,9 +178,10 @@ class ActiveLearn():
             script.add_cmd_line(f'models=({models_to_evaluate})')
             script.add_cmd_line('num_models=${#models[@]}')
             script.add_cmd_line('for ((i=0; i<num_models; i++)); do')
-            script.add_cmd_line('model="${models[i]}"\nmodel_output="evaluated_configs_$i.xyz"')
+            script.add_cmd_line('model="${models[i]}"\nmodel_output="evaluated_configs/configs_$i.xyz"')
             script.add_cmd_line('echo "Evaluating $model"')
             script.add_cmd_line(eval_model_cmd)
+            script.add_cmd_line(lmps_model_cmd)
             script.add_cmd_line('done')
             
             script.write_script(f'{script_outdir}/evaluate_script_#{i}')
@@ -189,6 +210,9 @@ class ActiveLearn():
 
     def fetch_model_configs():
         return None
+    
+
+        
     
 
 class UncertaintyQuantification():
@@ -221,20 +245,20 @@ class UncertaintyQuantification():
     def filter_configs(self, tol: float, max_configs: int=None, min_configs: int=None,method='dubois',selection='largest') -> None:
         
         if method == 'dubois':
-            uncertainties = self.dubois_uncertainty()
+            self.uncertainties = self.dubois_uncertainty()
         else:
             raise ValueError(f'Method: {method}, unknown')
         
-        indices = np.where(uncertainties > tol)[0]
-        if max_configs:
-            if len(indices) > max_configs:
-                indices = np.argsort(uncertainties)[::-1][0:max_configs]
+        self.indices = np.where(self.uncertainties > tol)[0]
+        if max_configs is not None:
+            if len(self.indices) > max_configs:
+                self.indices = np.argsort(self.uncertainties)[::-1][0:max_configs]
             
-        elif min_configs:
-            if len(indices) < min_configs:
-                indices = np.argsort(uncertainties)[::-1][0:min_configs]
+        if min_configs is not None:
+            if len(self.indices) < min_configs:
+                self.indices = np.argsort(self.uncertainties)[::-1][0:min_configs]
         
-        new_configs = [self.original_configs[i] for i in indices]
+        new_configs = [self.original_configs[i] for i in self.indices]
         
         ase.io.write(f'active_learning_result.xyz',new_configs)
         
