@@ -154,11 +154,12 @@ class ActiveLearn():
             header += '\n'
             header += f'source {self.hpc_config["python_env"]}/bin/activate\n'
             
-            models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
-            if models == []:
-                print(f'<!> Warning did not find stage two models in directory /{self.models_dir}, assuming model names automatically, this could fail.')
-                models = [f'{self.models_dir}/{self.expected_final_models[i]}' for i in range(len(self.expected_final_models))]
             
+            if self.expected_final_models:
+                models = [f'{self.models_dir}/{self.expected_final_models[i]}' for i in range(len(self.expected_final_models))]
+            else:
+                models = [i for i in all_model_files if ('stagetwo.model' in i and 'run' not in i)]
+  
             eval_model_cmd = f'{self.hpc_config["python_env"]}/bin/mace_eval_configs --configs {atomic_config_file} --model $model --output $model_output'
         
         if create_lammps_model:
@@ -223,6 +224,7 @@ class UncertaintyQuantification():
         self.evaluated_config_files = evaluated_config_files
         self.committee_size = len(evaluated_config_files)
         self.architecture = architecture
+        self.uncertainties = None
         
         if architecture == 'mace':
             self.energy_tag = 'MACE_energy'
@@ -244,10 +246,11 @@ class UncertaintyQuantification():
             
     def filter_configs(self, tol: float, max_configs: int=None, min_configs: int=None,method='dubois',selection='largest') -> None:
         
-        if method == 'dubois':
-            self.uncertainties = self.dubois_uncertainty()
-        else:
-            raise ValueError(f'Method: {method}, unknown')
+        if self.uncertainties is None:
+            if method == 'dubois':
+                self.uncertainties = self.dubois_uncertainty()
+            else:
+                raise ValueError(f'Method: {method}, unknown')
         
         self.indices = np.where(self.uncertainties > tol)[0]
         if max_configs is not None:
@@ -279,7 +282,9 @@ class UncertaintyQuantification():
         all_force_sd = np.std(force_deviations)
         
         dubois_uncertainties = energy_deviations / all_energy_sd + force_deviations / all_force_sd
-            
+        
+        self.uncertainties = dubois_uncertainties
+        
         return dubois_uncertainties
 
 
