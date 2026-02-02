@@ -11,6 +11,7 @@ import ase.io
 from pathlib import Path
 import subprocess
 import yaml
+from mlipts import utils
 from mlipts.codes import lammps, vasp
 from mlipts.hpc_submission import hpc_utils
 from mlipts.similarity import filter,group
@@ -196,7 +197,8 @@ class DataCollection():
         return None
     
     def build_QM_calculations(self, 
-                              QM_base_dir: str, 
+                              QM_base_dir: str=None, 
+                              multi_supercell_dict: dict=None,
                               QMcode: str='vasp', 
                               outdir: str = './QM_calculations', 
                               label: str=None,
@@ -218,6 +220,9 @@ class DataCollection():
             new QM calculations generated in outdir. 
         '''
         
+        if QM_base_dir == None and multi_supercell_dict == None:
+            raise ValueError('Must provide a base directory, either one or multiple.')
+        
         if label==None:
             label=QMcode
         
@@ -235,7 +240,13 @@ class DataCollection():
         for i,config in enumerate(configs_for_build):
             extension = '' if len(configs_for_build)==1 else f'_c_#{i}'
             if QMcode == 'vasp':
-                new_calc_dir = vasp.build_vasp_calculation(QM_base_dir,config,f'{label}{extension}',outdir)
+                if QM_base_dir is not None:
+                    new_calc_dir = vasp.build_vasp_calculation(QM_base_dir,config,f'{label}{extension}',outdir)
+                else:
+                    base_dir = utils.match_config_to_dir(config,multi_supercell_dict)
+                    new_calc_dir = vasp.build_vasp_calculation(base_dir,config,f'{label}{extension}',outdir)
+                    
+                
             elif QMcode not in __QMcodes__:
                 raise ValueError(f'QM code {QMcode} not supported')
             
