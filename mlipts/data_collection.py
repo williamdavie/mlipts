@@ -323,7 +323,7 @@ class DataCollection():
                 QM_group_indicies_extended = np.zeros((QM_group_indicies.shape[0],QM_group_indicies.shape[1]+1),dtype=np.int16)
                 QM_group_indicies_extended[:,1:] = QM_group_indicies[:,0:]
                 for i in range(npartitions):
-                    self.build_QM_calculations(self.initialized_QM_dirs[QM_group_indicies[i,0]],QMcode,calcs_outdir,pre_define_configs=[pilot_calculation_configs[i]],label=f'pilot_#{i}')
+                    self.build_QM_calculations(self.initialized_QM_dirs[QM_group_indicies[i,0]],None,QMcode,calcs_outdir,pre_define_configs=[pilot_calculation_configs[i]],label=f'pilot_#{i}')
                     #pilot calculations are the last items in the list. 
                     QM_group_indicies_extended[i,0] = n_main_calcs + i
                 QM_group_indicies = QM_group_indicies_extended.copy()
