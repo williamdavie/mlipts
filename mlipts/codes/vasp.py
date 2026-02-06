@@ -138,7 +138,7 @@ def set_icharg(value: int, vasp_calc_dir: str):
 #-------------------MAGMOM for large databases------------------
 
 
-def set_magmom(supercell_size: np.ndarray, 
+def set_magmom(supercell_matrix: np.ndarray, 
                motif: np.ndarray, magmom_motif: np.ndarray, 
                vasp_calc_dirs: str='./QM_calculations') -> None:
     '''
@@ -166,7 +166,7 @@ def set_magmom(supercell_size: np.ndarray,
     subdirs = [p for p in path.iterdir() if p.is_dir()]
     for vasp_calc in subdirs:
         if haveINCAR(str(vasp_calc)) and havePOSCAR(str(vasp_calc)):
-            set_magmom_one_directory(supercell_size,motif,magmom_motif,vasp_calc)
+            set_magmom_one_directory(supercell_matrix,motif,magmom_motif,vasp_calc)
         else:
             pass
     
@@ -175,7 +175,7 @@ def set_magmom(supercell_size: np.ndarray,
     return None
     
     
-def set_magmom_one_directory(supercell_size: np.ndarray,
+def set_magmom_one_directory(supercell_matrix: np.ndarray,
                              motif: np.ndarray, magmom_motif: np.ndarray,
                              vasp_calc_dir: str) -> None:
     '''
@@ -185,9 +185,18 @@ def set_magmom_one_directory(supercell_size: np.ndarray,
     
     # define all possible positions
     atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
-    basis_vectors = np.array(atoms.cell)/supercell_size
-
-    Nx,Ny,Nz = supercell_size[0:3]
+    basis_vectors = np.array(atoms.cell)/supercell_matrix
+    
+    # regardless whether the supercell matrix is diagonal or not, if expand by the determinant + 1 in all directions, we capture all required cases - 
+    # Note <!!> in theory this extremely inefficient, but with vector algebra and that performing DFT on massive supercells is unlikely, this is not a bottleneck.
+    if supercell_matrix.shape==(3,3):
+        supercell_matrix_det = np.linalg.det(supercell_matrix)
+        Nx = Ny = Nz = supercell_matrix_det + 1
+    elif supercell_matrix.shape==(3,):
+        Nx,Ny,Nz = supercell_matrix[0:3]
+    else:
+        raise ValueError('Must parse supercell matrix (3x3) or just the diagonal (3x1).')
+        
     possible_vectors = []
     # by expanding range to (-1,N+1, variations of wrapped co-ords outputed by the MD calculation. 
     for i,j,k in product(range(-1,Nx+1),range(-1,Ny+1),range(-1,Nz+1)):

@@ -240,8 +240,6 @@ class lammpsBuild():
             raise FileNotFoundError('No atomic data (*.dat) file found in base directory')
         if len(self.input_files) > 1:
             raise FileExistsError('Cannot have multiple input files (in.*)')
-        if len(self.dat_files) > 1:
-            raise FileExistsError('Cannot have multiple atomic data files (*.dat)')
 
         self.input = open(self.input_files[0],'r').read()
     
@@ -274,7 +272,7 @@ class lammpsBuild():
             self.read_base_directory()
         
         # If multiple variables we need to specify all possible combinations 
-        for combination in product(*all_values):
+        for k, combination in enumerate(product(*all_values)):
             #combination looks like tuple(var1, var2, var2, etc) 
             new_dir_name = label
             new_input_str = []
@@ -283,7 +281,10 @@ class lammpsBuild():
             for i, val in enumerate(combination):
                 # label new calculation directory
                 var_name = self.variable_keys[i][1:] # assumes first character is £
-                new_dir_name += f'_{str(var_name).replace("£","")}_{round(val,None)}'
+                try:
+                    new_dir_name += f'_{str(var_name).replace("£","")}_{round(val,None)}'
+                except:
+                    new_dir_name += f'_{str(var_name).replace("£","")}_{round(k,None)}'
                 current_variables[self.variable_keys[i]] = val
                 
             #now define new str for this combination 
