@@ -39,6 +39,8 @@ def match_config_to_dir(config: ase.Atoms, supercell_dict: dict) -> str:
         if keys[i] == 'a':
             continue
         
+        print(value*supercell_dict['a'])
+        print(np.array(config.cell))
         dif = abs(np.linalg.norm(value*supercell_dict['a']-np.array(config.cell)))
         print(dif)
         if dif < min_val:

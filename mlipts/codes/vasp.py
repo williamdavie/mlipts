@@ -139,7 +139,7 @@ def set_icharg(value: int, vasp_calc_dir: str):
 
 
 def set_magmom(supercell_matrix: np.ndarray, 
-               motif: np.ndarray, magmom_motif: np.ndarray, 
+               motif: np.ndarray, motif_species: list[str], magmom_motif: np.ndarray, 
                vasp_calc_dirs: str='./QM_calculations') -> None:
     '''
     Given a set of vasp calculation directories, the supercell size, a motif and the magnet moments for the motif, POSCAR is used to set the MAGMOM string. 
@@ -166,7 +166,7 @@ def set_magmom(supercell_matrix: np.ndarray,
     subdirs = [p for p in path.iterdir() if p.is_dir()]
     for vasp_calc in subdirs:
         if haveINCAR(str(vasp_calc)) and havePOSCAR(str(vasp_calc)):
-            set_magmom_one_directory(supercell_matrix,motif,magmom_motif,vasp_calc)
+            set_magmom_one_directory(supercell_matrix,motif,motif_species,magmom_motif,vasp_calc)
         else:
             pass
     
@@ -176,7 +176,7 @@ def set_magmom(supercell_matrix: np.ndarray,
     
     
 def set_magmom_one_directory(supercell_matrix: np.ndarray,
-                             motif: np.ndarray, magmom_motif: np.ndarray,
+                             motif: np.ndarray, motif_species: list[str], magmom_motif: np.ndarray,
                              vasp_calc_dir: str) -> None:
     '''
     Called on each directory by set_magmom
@@ -209,7 +209,14 @@ def set_magmom_one_directory(supercell_matrix: np.ndarray,
             pos_cart = pos[0] * basis_vectors[0] + pos[1] * basis_vectors[1] + pos[2] * basis_vectors[2]
             expected_positions.append((pos_cart))
             mag_moments.append(magmom_motif[i]) # set corresponding magmom
-            
+   
+    # need some consideration of atomic species then the function is pretty much safe, best way to just loop through each species and compute distances.
+    symbols = atoms.get_chemical_symbols()     
+    expected_species = np.array(motif_species)[closest_indices]
+    for i, (s1, s2) in enumerate(zip(symbols, expected_species)):
+        if s1 != s2:
+            raise ValueError(f'Closest element is the wrong species.')
+        
     # find the positions in POSCAR corresponding to positions in motif
     A = atoms.positions
     B = np.array(expected_positions)

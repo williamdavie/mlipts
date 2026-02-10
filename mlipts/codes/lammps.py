@@ -74,9 +74,28 @@ def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
             bline = split_lines[i+2].split()
             cline = split_lines[i+3].split()
             # hi - lo
-            lattice_vectors[0,0] = float(aline[1]) - float(aline[0])
-            lattice_vectors[1,1] = float(bline[1]) - float(bline[0])
-            lattice_vectors[2,2] = float(cline[1]) - float(cline[0])
+            xlo,xhi = float(aline[0]),float(aline[1])
+            ylo,yhi = float(bline[0]),float(bline[1])
+            zlo,zhi = float(cline[0]),float(cline[1])
+            
+            # non-diagonal cells
+            if (len(aline),len(bline),len(cline)) == (3,3,3):
+                xy,xz,yz = float(aline[2]),float(bline[2]),float(cline[2])
+                # see lammps docs https://docs.lammps.org/Howto_triclinic.html
+                xlo -= min(0,xy,xz,xy+xz)
+                xhi -= max(0,xy,xz,xy+xz)
+                ylo -= min(0,yz)
+                yhi -= max(0,yz)
+                
+                lattice_vectors[1,0] = xy
+                lattice_vectors[2,0] = xz
+                lattice_vectors[2,1] = yz
+                
+                      
+            lattice_vectors[0,0] = xhi - xlo
+            lattice_vectors[1,1] = yhi - ylo
+            lattice_vectors[2,2] = zhi - zlo
+            
         
             all_lattice_vectors.append(lattice_vectors.copy())
     
@@ -100,9 +119,9 @@ def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
                 atom_line_split = split_lines[i+atom+1].split()
                 types[atom] = int(atom_line_split[type_index]) 
                 
-                atomic_positions[atom,0] = float(atom_line_split[x_index]) / lattice_vectors[0,0]
-                atomic_positions[atom,1] = float(atom_line_split[y_index]) / lattice_vectors[1,1]
-                atomic_positions[atom,2] = float(atom_line_split[z_index]) / lattice_vectors[2,2]
+                atomic_positions[atom,0] = float(atom_line_split[x_index])
+                atomic_positions[atom,1] = float(atom_line_split[y_index]) 
+                atomic_positions[atom,2] = float(atom_line_split[z_index]) 
                 
                 these_labels.append(atom_line_split[element_index])
             
@@ -119,7 +138,7 @@ def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
     
     configs: list[Atoms] = []
     for i in range(num_snapshots):
-        config = Atoms(symbols=type_labels[i],scaled_positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
+        config = Atoms(symbols=type_labels[i],positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
         configs.append(config)
         
         
