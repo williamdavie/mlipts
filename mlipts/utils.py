@@ -24,33 +24,25 @@ def sort_configs_by_volume(configs: list[ase.Atoms]) -> list[ase.Atoms]:
 
 def match_config_to_dir(config: ase.Atoms, supercell_dict: dict) -> str:
     '''
-    Given a directory, labelled by a supercell matrix and an atomic config, match the config to a directory.
+    Given a directory, labelled by a set of lattice vectors, match the config to a directory.
     '''
     
-    keys = list(supercell_dict.keys())
-    if 'a' not in keys:
-        raise ValueError('Tried to a config to the corresponding directory but lattice parameter (a) was not provided')
-
-    index = 0
-    min_val = supercell_dict['a'] * 2
+    dirs = list(supercell_dict.keys())
+    
+    min_val = 100
 
     for i,value in enumerate(supercell_dict.values()):
         
-        if keys[i] == 'a':
-            continue
-        
-        print(value*supercell_dict['a'])
-        print(np.array(config.cell))
-        dif = abs(np.linalg.norm(value*supercell_dict['a']-np.array(config.cell)))
+        dif = abs(np.linalg.norm(value-np.array(config.cell)))
         print(dif)
         if dif < min_val:
             min_val = dif
             index = i
     
-    if min_val > supercell_dict['a']/2:
+    if min_val > np.min(supercell_dict.values()[index])/2:
         print('Warning <!>: Did not find a matching supercell in the input dictionary')
         
-    return list(supercell_dict.keys())[index]
+    return dirs[index]
 
 
 if __name__ == '__main__':

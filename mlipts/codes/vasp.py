@@ -37,12 +37,9 @@ def build_vasp_calculation(vasp_base_dir: str, config: ase.Atoms, calc_name: str
         vasp directory generated in outdir.
     '''
     
-    poscar = write_POSCAR_str(config)
     new_calc_dir = outdir + '/' + f'{calc_name}'
     shutil.copytree(vasp_base_dir, new_calc_dir, dirs_exist_ok=True)
-            
-    with open(new_calc_dir +'/POSCAR','w') as f:
-                f.write(poscar)
+    ase.io.write(new_calc_dir +'/POSCAR', config, format='vasp', vasp5=True, direct=True)
     
     return new_calc_dir
 
@@ -72,9 +69,9 @@ def write_POSCAR_str(config: ase.Atoms) -> str:
     for type in type_labels:
         count = config.symbols.count(type)
         poscar += f' {count} '
-    poscar+='\nDirect\n'
+    poscar+='\nCartesian\n'
 
-    for pos in config.get_scaled_positions():
+    for pos in config.get_positions():
         poscar+=f'{pos[0]} {pos[1]} {pos[2]}\n'
  
     return poscar
@@ -138,9 +135,7 @@ def set_icharg(value: int, vasp_calc_dir: str):
 #-------------------MAGMOM for large databases------------------
 
 
-def set_magmom(supercell_matrix: np.ndarray, 
-               motif: np.ndarray, motif_species: list[str], magmom_motif: np.ndarray, 
-               vasp_calc_dirs: str='./QM_calculations') -> None:
+def set_magmom(magmom_motif_config: ase.Atoms, vasp_calc_dirs: str='./QM_calculations') -> None:
     '''
     Given a set of vasp calculation directories, the supercell size, a motif and the magnet moments for the motif, POSCAR is used to set the MAGMOM string. 
     Allowing the user to access magnetically ordered states for larger supercells.
@@ -166,7 +161,7 @@ def set_magmom(supercell_matrix: np.ndarray,
     subdirs = [p for p in path.iterdir() if p.is_dir()]
     for vasp_calc in subdirs:
         if haveINCAR(str(vasp_calc)) and havePOSCAR(str(vasp_calc)):
-            set_magmom_one_directory(supercell_matrix,motif,motif_species,magmom_motif,vasp_calc)
+            set_magmom_one_directory(magmom_motif_config,vasp_calc)
         else:
             pass
     
@@ -175,68 +170,126 @@ def set_magmom(supercell_matrix: np.ndarray,
     return None
     
     
-def set_magmom_one_directory(supercell_matrix: np.ndarray,
-                             motif: np.ndarray, motif_species: list[str], magmom_motif: np.ndarray,
-                             vasp_calc_dir: str) -> None:
+def set_magmom_one_directory(magmom_motif_config: ase.Atoms, vasp_calc_dir: str) -> None:
     '''
     Called on each directory by set_magmom
     '''
     # This function is quite brute force and is oppitunity to optimize.
     
+    minimal_cell = np.array(magmom_motif_config.cell)
+    try:
+        motif_magmoms = magmom_motif_config.get_initial_magnetic_moments()
+        motif_scaled_pos = magmom_motif_config.get_scaled_positions()
+        motif_elements = magmom_motif_config.get_chemical_symbols()
+    except:
+        raise ValueError('magnetic moment motif input file must contain positions and initial moments.')
+
     # define all possible positions
-    atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
-    basis_vectors = np.array(atoms.cell)/supercell_matrix
+    input_atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
+    cell = np.array(input_atoms.cell)
     
     # regardless whether the supercell matrix is diagonal or not, if expand by the determinant + 1 in all directions, we capture all required cases - 
-    # Note <!!> in theory this extremely inefficient, but with vector algebra and that performing DFT on massive supercells is unlikely, this is not a bottleneck.
-    if supercell_matrix.shape==(3,3):
-        supercell_matrix_det = np.linalg.det(supercell_matrix)
-        Nx = Ny = Nz = supercell_matrix_det + 1
-    elif supercell_matrix.shape==(3,):
-        Nx,Ny,Nz = supercell_matrix[0:3]
-    else:
-        raise ValueError('Must parse supercell matrix (3x3) or just the diagonal (3x1).')
-        
+    # Note <!!> in theory this extremely inefficient, but with vector algebra and that performing DFT on massive supercells is unlikely, this is not a bottleneck.  
+    
+    scaling_factor = int(np.linalg.det(cell)/np.linalg.det(minimal_cell)) # intergers 1,2,3 .. etc
+    Nx = Ny = Nz = scaling_factor + 1
+    
+
+    # should be close to 1
+    volume_scaling_factor = (np.linalg.det(cell)/scaling_factor)/np.linalg.det(minimal_cell)
+    expanding_vectors =  (volume_scaling_factor)**(1/3) * minimal_cell
+
+    #reference position, this is jubious but the main thing is that we select the correct element as reference
+    reference_element = get_reference_element(magmom_motif_config)
+    reference_positions = get_reference_positions(input_atoms)
+    reference_position =  reference_positions[reference_element]
+    
+
+    input_pos_ref = input_atoms.get_positions() - reference_position
+    input_pos_scaled = np.zeros_like(input_pos_ref)
+    
+    for i,pos in enumerate(input_pos_ref):
+        input_pos_scaled[i] = np.linalg.solve(expanding_vectors,pos)
+    
     possible_vectors = []
     # by expanding range to (-1,N+1, variations of wrapped co-ords outputed by the MD calculation. 
     for i,j,k in product(range(-1,Nx+1),range(-1,Ny+1),range(-1,Nz+1)):
         possible_vectors.append(np.array([i,j,k]))
     expected_positions = [] # expected for a relaxed lattice
-    mag_moments = []
+    expected_mag_moments = []
+    expected_elements = []
     for vecs in possible_vectors:
-        for i,motif_pos in enumerate(motif):
+        for i,motif_pos in enumerate(motif_scaled_pos):
             pos = (motif_pos + vecs)
-            pos_cart = pos[0] * basis_vectors[0] + pos[1] * basis_vectors[1] + pos[2] * basis_vectors[2]
-            expected_positions.append((pos_cart))
-            mag_moments.append(magmom_motif[i]) # set corresponding magmom
+            expected_positions.append((pos))
+            expected_elements.append(motif_elements[i])
+            expected_mag_moments.append(motif_magmoms[i]) # set corresponding magmom
    
     # need some consideration of atomic species then the function is pretty much safe, best way to just loop through each species and compute distances.
-    symbols = atoms.get_chemical_symbols()     
-    expected_species = np.array(motif_species)[closest_indices]
-    for i, (s1, s2) in enumerate(zip(symbols, expected_species)):
-        if s1 != s2:
-            raise ValueError(f'Closest element is the wrong species.')
         
     # find the positions in POSCAR corresponding to positions in motif
-    A = atoms.positions
+    A = input_pos_scaled
     B = np.array(expected_positions)
-    diff = A[:, None, :] - B[None, :, :]  
-    dist2 = np.sum(diff**2, axis=2)       
-    closest_indices = np.argmin(dist2, axis=1)
-    magmom_reordered = np.array(mag_moments)[closest_indices]
+    all_diff = B[None,:,:] - A[:, None, :]
+    all_dist2 = np.sum(all_diff**2, axis=2)  
+    
+    magmoms = np.zeros((len(input_atoms),3)) 
+    
+    
+    for i,atom in enumerate(input_atoms):
+        symbol = atom.symbol
+        element_indices = [i for i, val in enumerate(expected_elements) if val == symbol]
+        B_this_element = B[np.array(element_indices), :]
+        diff = B_this_element - input_pos_scaled[i]
+        dist2 = np.sum(diff**2, axis=1)  
+        closest_index = np.argmin(dist2)
+        true_index = np.where(dist2[closest_index]==all_dist2)[1][0]
+        magmoms[i] = expected_mag_moments[true_index]
     
     # define magmom str
     magmom_str = 'MAGMOM = '
-    for i, pos in enumerate(atoms.positions):
-        mx,my,mz = magmom_reordered[i][0:3]
+    for i, pos in enumerate(input_atoms.positions):
+        mx,my,mz = magmoms[i][0:3]
         magmom_str += f'{mx} {my} {mz} '
         
+    input_atoms.set_initial_magnetic_moments(magmoms)
+    ase.io.write('text_magmom.xyz',input_atoms)
     writeMAGMOM(f'{vasp_calc_dir}/INCAR',new_magmom_str=magmom_str)
     
     return None
             
+   
+def get_reference_positions(atoms: ase.Atoms):
+    
+    reference_positions = {}
+    dict_keys = []
+    atoms_symbols = atoms.get_chemical_symbols()
+    atoms_positions = atoms.get_positions()
+    
+    for i,element in enumerate(atoms_symbols):
+        if element not in dict_keys:
+            dict_keys.append(element)
+            
+            elem_positions = atoms_positions[[s == element for s in atoms_symbols]]
+            closest_pos = elem_positions[np.argmin(np.linalg.norm(elem_positions, axis=1))]
+            
+            reference_positions[str(element)] = closest_pos
+            
+    return reference_positions
+
+
+def get_reference_element(atoms: ase.Atoms):
+    
+    pos = atoms.positions
+    idx = np.argmin(np.linalg.norm(pos, axis=1))
+
+    closest_pos = pos[idx]
+    closest_element = atoms[idx].symbol
+    
+    return closest_element
     
         
+    
 def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
     '''
     given the path to an INCAR file, writes or updates the MAGMOM string
@@ -257,6 +310,22 @@ def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
         f.write(new_file_str)
         
     return None
+
+
+
+#-------------------KPOINTS for large databases------------------
+
+def set_kpoints(kspacing: float, grid_type: str='Gamma',vasp_calc_dirs: str='./QM_calculations'):
+    return None
+
+def set_kpoints_one_directory(vasp_calc_dir: str, kspacing: float, grid_type: str='Gamma'):
+    return None
+
+
+#-------------------ANY INCAR PARAM for large databases------------------
+
+# want a way to set an INCAR parameter given a cell type condition, e.g. number of atoms.
+
     
     
 def haveINCAR(dir: str):

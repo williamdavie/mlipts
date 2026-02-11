@@ -126,12 +126,17 @@ def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
                 these_labels.append(atom_line_split[element_index])
             
             type_labels.append(these_labels)
-                
+            
+            '''
+            print(atomic_positions)
+               
             # as required by vasp, must be type sorted. 
             types_sorted = np.argsort(types)
             types,type_counts = np.unique(types,return_counts=True)
             num_types = np.max(types)
-            all_atomic_positions.append(atomic_positions[types_sorted])
+            
+            '''
+            all_atomic_positions.append(atomic_positions)
 
    # for i in types:
       #  type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
