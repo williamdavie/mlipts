@@ -2,6 +2,11 @@ import numpy as np
 from itertools import product
 import ase
 
+def get_equilibrium_motif(config: ase.Atoms, equilibrium_config: ase.Atoms):
+    
+    return None
+    
+
 def fetch_supercell_motif(motif: np.ndarray, supercell_dims: np.ndarray):
     
     Nx,Ny,Nz = supercell_dims

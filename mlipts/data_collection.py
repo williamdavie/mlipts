@@ -266,7 +266,7 @@ class DataCollection():
                                    scripts_outdir: str='./QM_scripts',
                                    submit: bool=True,
                                    smart_convergence: bool=False,
-                                   expected_motif: np.ndarray=None,
+                                   equilibrium_config: ase.Atoms=None,
                                    pilot_calculations: bool=True,
                                    mark_as_active: bool=True,
                                    calcs_outdir: str='./QM_calculations',
@@ -315,9 +315,9 @@ class DataCollection():
             raise ValueError(f'QM code {QMcode} not supported')
         
         if smart_convergence == True:
-            if expected_motif is None:
+            if equilibrium_config is None:
                 raise ValueError('Cannot perform smart convergence without an expected structure (expected_motif).')
-            QM_group_indicies, pilot_calculation_configs = group.smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,expected_motif=expected_motif,calc_code=QMcode,pilot_calculations=pilot_calculations)
+            QM_group_indicies, pilot_calculation_configs = group.smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,equilibrium_config=equilibrium_config,calc_code=QMcode,pilot_calculations=pilot_calculations)
             if pilot_calculations:
                 n_main_calcs = len(self.initialized_QM_dirs)
                 QM_group_indicies_extended = np.zeros((QM_group_indicies.shape[0],QM_group_indicies.shape[1]+1),dtype=np.int16)

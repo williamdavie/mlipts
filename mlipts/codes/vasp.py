@@ -316,11 +316,61 @@ def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
 #-------------------KPOINTS for large databases------------------
 
 def set_kpoints(kspacing: float, grid_type: str='Gamma',vasp_calc_dirs: str='./QM_calculations'):
+    
+    path = Path(vasp_calc_dirs)
+    subdirs = [p for p in path.iterdir() if p.is_dir()]
+    for vasp_calc in subdirs:
+        if havePOSCAR(str(vasp_calc)):
+            set_kpoints_one_directory(str(vasp_calc),kspacing,grid_type)
+        else:
+            pass
+
     return None
+    
+    
 
 def set_kpoints_one_directory(vasp_calc_dir: str, kspacing: float, grid_type: str='Gamma'):
+    '''
+
+    :param kspacing: units: 2pi/A
+
+    '''
+    
+    input_atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
+    cell = np.array(input_atoms.cell)
+    rcp_lattice_vectors = reciprocal_lattice_vectors(cell)
+    
+    kpoints = np.zeros(3)
+    for i in range(3):
+        # There are some subtlties 
+        kpoints[i] = max(1,round(np.linalg.norm(rcp_lattice_vectors[i])/(2*np.pi*kspacing)))
+    
+    
+    with open(f'{vasp_calc_dir}/KPOINTS','w') as f:
+        
+        f.write(f'K-Spacing Value to Generate K-Mesh: {kspacing:.3f}\n')
+        f.write('0\n')
+        f.write(f'{grid_type}\n')
+        f.write(f'{kpoints[0]:.0f} {kpoints[1]:.0f} {kpoints[2]:.0f}\n')
+        f.write('0.0 0.0 0.0\n')
+        
     return None
 
+
+
+def reciprocal_lattice_vectors(lattice_vectors: np.ndarray):
+    '''
+    Returns the reciprocal lattice vectors of 3x3 lattice vectors.
+    '''
+    
+    rcp_lattice_vectors = np.zeros_like(lattice_vectors)
+    V = np.dot(lattice_vectors[0], np.cross(lattice_vectors[1],lattice_vectors[2]))
+    
+    pertubations = [(0,1,2),(1,2,0),(2,0,1)]
+    for p in pertubations:
+        rcp_lattice_vectors[p[0]] = 2*np.pi/V * (np.cross(lattice_vectors[p[1]],lattice_vectors[p[2]]))
+        
+    return rcp_lattice_vectors
 
 #-------------------ANY INCAR PARAM for large databases------------------
 
@@ -349,6 +399,18 @@ def havePOSCAR(dir: str):
         return True
     else:
         return False
+    
+def haveKPOINTS(dir: str):
+    '''
+    checks if a directory contains KPOINTS
+    '''
+    path = Path(dir)
+    files = [str(p.name) for p in path.iterdir()]
+    if 'KPOINTS' in files:
+        return True
+    else:
+        return False
+        
         
     
 
