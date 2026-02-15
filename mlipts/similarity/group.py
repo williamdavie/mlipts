@@ -128,7 +128,7 @@ def return_motif_config(config: Atoms, equilibrium_config: Atoms) -> Atoms:
     #first search surrounding space in case config positions are wrapped. (may need to be edited for non-square cells?)
     motif_extended = []
     
-    motif = utils.
+    motif = utils.get_equilibrium_motif(config,equilibrium_config)
     
     for i,j,k in product(range(-1,2),range(-1,2),range(-1,2)):
         for motif_pos in motif:

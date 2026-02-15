@@ -1,0 +1,1 @@
+utilities for measuring and utlising correlation between configurations 

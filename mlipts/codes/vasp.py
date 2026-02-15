@@ -13,6 +13,8 @@ import shutil
 import py4vasp
 from pathlib import Path
 
+from mlipts import utils
+
 from itertools import product
 
 
@@ -191,25 +193,11 @@ def set_magmom_one_directory(magmom_motif_config: ase.Atoms, vasp_calc_dir: str)
     # regardless whether the supercell matrix is diagonal or not, if expand by the determinant + 1 in all directions, we capture all required cases - 
     # Note <!!> in theory this extremely inefficient, but with vector algebra and that performing DFT on massive supercells is unlikely, this is not a bottleneck.  
     
-    scaling_factor = int(np.linalg.det(cell)/np.linalg.det(minimal_cell)) # intergers 1,2,3 .. etc
+    scaling_factor = round(np.linalg.det(cell)/np.linalg.det(minimal_cell)) # intergers 1,2,3 .. etc
     Nx = Ny = Nz = scaling_factor + 1
     
-
-    # should be close to 1
-    volume_scaling_factor = (np.linalg.det(cell)/scaling_factor)/np.linalg.det(minimal_cell)
-    expanding_vectors =  (volume_scaling_factor)**(1/3) * minimal_cell
-
-    #reference position, this is jubious but the main thing is that we select the correct element as reference
-    reference_element = get_reference_element(magmom_motif_config)
-    reference_positions = get_reference_positions(input_atoms)
-    reference_position =  reference_positions[reference_element]
-    
-
-    input_pos_ref = input_atoms.get_positions() - reference_position
-    input_pos_scaled = np.zeros_like(input_pos_ref)
-    
-    for i,pos in enumerate(input_pos_ref):
-        input_pos_scaled[i] = np.linalg.solve(expanding_vectors,pos)
+    input_pos_scaled = utils.get_scaled_reference_positions(config=input_atoms,
+                                                            equilibrium_config=magmom_motif_config)
     
     possible_vectors = []
     # by expanding range to (-1,N+1, variations of wrapped co-ords outputed by the MD calculation. 
@@ -258,37 +246,6 @@ def set_magmom_one_directory(magmom_motif_config: ase.Atoms, vasp_calc_dir: str)
     
     return None
             
-   
-def get_reference_positions(atoms: ase.Atoms):
-    
-    reference_positions = {}
-    dict_keys = []
-    atoms_symbols = atoms.get_chemical_symbols()
-    atoms_positions = atoms.get_positions()
-    
-    for i,element in enumerate(atoms_symbols):
-        if element not in dict_keys:
-            dict_keys.append(element)
-            
-            elem_positions = atoms_positions[[s == element for s in atoms_symbols]]
-            closest_pos = elem_positions[np.argmin(np.linalg.norm(elem_positions, axis=1))]
-            
-            reference_positions[str(element)] = closest_pos
-            
-    return reference_positions
-
-
-def get_reference_element(atoms: ase.Atoms):
-    
-    pos = atoms.positions
-    idx = np.argmin(np.linalg.norm(pos, axis=1))
-
-    closest_pos = pos[idx]
-    closest_element = atoms[idx].symbol
-    
-    return closest_element
-    
-        
     
 def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
     '''
