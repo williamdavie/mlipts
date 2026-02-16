@@ -24,6 +24,8 @@ from itertools import product
 from ase import Atoms
 from typing import Optional 
 
+from mlipts import utils
+
 
 def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
     '''
@@ -371,4 +373,119 @@ def set_random_velocity_seed(input_str: str):
         new_input_str.append(new_line)
         
     return "\n".join(new_input_str)
+
+
+
+#---------------------------------------------------------------------------
+# Reverting a triclinic simulation box from lammps.
+#---------------------------------------------------------------------------
+
+# Given a triclinic box configuration from read from lammps (ASE format), 
+# revert to back to a interger diagonal supercell. 
+
+def revert_triclinic_all(configs: list[ase.Atoms], equilibrium_config: ase.Atoms):
+    
+    reverted_configs = []
+    
+    for config in configs:
+        
+        S = utils.get_supercell_matrix(config.cell,equilibrium_config.cell)
+        
+        # if matrix is integer don't change.
+        if np.allclose(S, np.round(S), atol=1e-4):
+            reverted_configs.append(config)
+        else:
+            reverted_config = revert_triclinic_configuration(config,equilibrium_config)
+            reverted_configs.append(reverted_config)
+            
+    return reverted_configs
+    
+
+def revert_triclinic_configuration(config: ase.Atoms,equilibrium_config: ase.Atoms):
+    '''
+    Multi-step process to revert lammps behaviour of wrapping supercell matricies.
+    '''
+    
+    # convert from restricted triclinic to general triclinic and wrap.
+    general_config = triclinic_restricted_to_general(config)
+    
+    
+    # find corresponding supercell
+    cell = general_config.cell
+    minimal_cell = equilibrium_config.cell
+
+    supercell = utils.retrieve_standard_supercell(cell,minimal_cell)
+    
+    if supercell is None:
+        raise ValueError(f'Could not find a supercell for the provided configuration with cell: {cell}')
+    
+    
+    # revert positions.
+
+    # transformation matrix 
+    A,B,C = supercell[0:3]
+    V = np.dot(A,np.cross(B,C))
+
+    M = 1/V * (general_config.cell.T @ np.array([np.cross(B,C),
+                                          np.cross(C,A),
+                                          np.cross(A,B)]))
+    
+    positions = general_config.get_positions()
+    new_positions = positions @ np.linalg.inv(M).T
+    
+    new_config = general_config.copy()
+    new_config.set_cell(supercell)
+    new_config.set_positions(new_positions)
+        
+    return new_config
+    
+
+def triclinic_restricted_to_general(config: ase.Atoms):
+    '''
+    Converts a restricted to general triclinic cell.
+    
+    See lammps docs.
+    '''
+    
+    restricted_cell = config.cell
+    
+    # format as saved by ASE (and MLIPTS)
+    lx,ly,lz = restricted_cell[0,0],restricted_cell[1,1],restricted_cell[2,2]
+    xy,xz,yz = restricted_cell[1,0],restricted_cell[2,0],restricted_cell[2,1]
+    
+    a = lx
+    b = np.sqrt(xy**2 + ly**2)
+    c = np.sqrt(xz**2 + yz**2 + lz**2)
+    
+    alpha = np.arccos((xy*xz + ly*yz)/(b*c))
+    beta = np.arccos((xz/c))
+    gamma = np.arccos((xy/b))
+    
+    general_cell = ase.geometry.cell.cellpar_to_cell([a, b, c, np.degrees(alpha), np.degrees(beta),np.degrees(gamma)])
+    
+    
+    # wrap back to original - unsure if this is robust. Must be tested.
+    if xy !=0: n = 1-round(xy/lx)
+    else: n = 0
+    if xz != 0:  m = 1-round(xz/lx)
+    else: m = 0
+    if yz != 0: k = 1-round(yz/ly)
+    else: k = 0
+    
+    general_cell[1] += n*general_cell[0]
+    general_cell[2] += m*general_cell[0] + k*general_cell[1]
+    
+    new_positions = config.get_positions() + n*general_cell[0]
+    new_positions += m*general_cell[0] + k*general_cell[1]
+    
+    # define and return updated configuration
+    new_config = config.copy()
+    
+    new_config.set_cell(general_cell)
+    
+    new_config.set_positions(new_positions)
+    
+    new_config.wrap()
+
+    return new_config
         

@@ -104,7 +104,7 @@ def match_config_to_dir(config: ase.Atoms, supercell_dict: dict) -> str:
     for i,value in enumerate(supercell_dict.values()):
         
         dif = abs(np.linalg.norm(value-np.array(config.cell)))
-        print(dif)
+
         if dif < min_val:
             min_val = dif
             index = i
@@ -128,4 +128,106 @@ def fetch_supercell_motif(motif: np.ndarray, supercell_dims: np.ndarray):
     
     return np.array(supercell_motif)
 
-#---------------------------------------------------------------------------
+#------------------------------Retrieving supercell matricies--------------------------------------
+
+def get_supercell_matrix(cell,minimal_cell):
+    '''
+    Get the transformation between the original high symmetry primitive lattice vectors and the input cell.
+    '''
+
+    scaling_factor = round(np.linalg.det(cell)/np.linalg.det(minimal_cell)) # intergers 1,2,3 .. etc
+    
+    # should be close to 1
+    volume_scaling_factor = (np.linalg.det(cell)/scaling_factor)/np.linalg.det(minimal_cell)
+    
+    expanded_minimal_cell =  (volume_scaling_factor)**(1/3) * minimal_cell
+    
+    # H' = SH, solve for S
+    S = np.linalg.solve(expanded_minimal_cell.T,cell.T).T
+    
+    return S
+
+
+def retrieve_standard_supercell(cell,minimal_cell):
+    '''
+    Given a rotated non-diagonal supercell and the primitive lattice vectors. Calculate the interger supercell matrix.
+    
+    This is achieved by mapping the angles and norm ratios between vectors for all possible supercell matricies with the expected determinant. 
+    '''
+    
+    supercell_det = round(np.linalg.det(cell)/np.linalg.det(minimal_cell))
+    
+    cell_parameters = get_magnitudes_and_angles(cell)
+    
+    possible_supercells = get_possible_supercells(supercell_det)
+    
+    for supercell in possible_supercells:
+        
+        supercell_parameters = get_magnitudes_and_angles(supercell)
+
+        
+        if np.allclose(supercell_parameters, cell_parameters, atol=1e-4):
+            
+            parameter = np.linalg.norm(cell)/np.linalg.norm(supercell)
+           
+            result = parameter * supercell
+        
+            return result
+        
+
+def get_possible_supercells(det: int):
+    '''
+    given the desired matrix determinant, return all possible upper triangular HNF supercell matricies
+    '''
+       
+    # fetch all diagonal elements             
+    diagonal_elements = []
+    for i in range(1, det + 1):
+        if det % i == 0:
+            remaining = det // i
+            for j in range(1, remaining + 1):
+                if remaining % j == 0:
+                    k = remaining // j
+                    diagonal_elements.append((i, j, k))
+              
+
+    # define all given a diagonal element
+    supercells = []
+    for diag in diagonal_elements:
+        S00,S11,S22 = diag
+        for n in range(0,diag[1]):
+            S01 = n
+            for p,q in product(range(0,diag[2]),range(0,diag[2])):
+                S02,S12 = p,q
+                
+                S = np.array([[S00,S01,S02],
+                              [0,S11,S12],
+                              [0,0,S22]])
+                
+                supercells.append(S)
+                
+    return supercells
+                
+                
+def get_magnitudes_and_angles(cell):
+
+    alpha = vectors_angle(cell[1],cell[2])
+    beta = vectors_angle(cell[0],cell[2])
+    gamma = vectors_angle(cell[0],cell[1])
+    
+    mag_array = np.array([np.linalg.norm(cell[0]),
+                            np.linalg.norm(cell[1]),
+                            np.linalg.norm(cell[2])])
+    mag_array /= np.min(mag_array)
+
+    return np.array([alpha,beta,gamma,mag_array[0],mag_array[1],mag_array[2]])
+
+
+def vectors_angle(vec1,vec2):
+    
+    cosAngle = np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2))
+    
+    return np.arccos(cosAngle)
+
+
+        
