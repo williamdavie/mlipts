@@ -6,6 +6,7 @@ import numpy as np
 from mlipts.codes.vasp import fetch_configs_vasp,build_vasp_calculation
 from mlipts import utils
 from ase.atoms import Atoms
+import ase.build
 from itertools import product
 from ase.io import read,write
 from mlipts.similarity.pdd import PDD
@@ -51,6 +52,7 @@ def smart_group_calcs(calc_dirs: list[str],
         raise ValueError(f'Calculation code {calc_code} not supported in smart grouping. ')
     if group_by == 'emd':
         k = int(input('Input number of neighbours (k) used for earth movers distance: '))
+        print('---------------------------------------------------------------------------')
         group_indicies, pilot_calculation_configs = smart_group_by_emd(configs,ngroups,k,equilibrium_config,pilot_calculations=pilot_calculations)
     else:
         raise ValueError(f'similarity assessment statergy (group_by) {group_by} not regonised')
@@ -75,14 +77,14 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, k: int, equilibrium_c
     # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
     for i,config in enumerate(configs):
-        motif_config = return_motif_config(config,equilibrium_config)
+        motif_config = utils.return_motif_config(config,equilibrium_config)
         PDD1 = all_pdds[i]
         PDD2 = PDD(motif_config.positions,motif_config.cell,k)
         init_emds[i] = EMD(PDD1,PDD2) 
-    
+        
     end_points = np.argpartition(init_emds, ngroups-1)[:ngroups]
     if pilot_calculations==True:
-        pilot_calculation_configs = [return_motif_config(configs[i],equilibrium_config) for i in end_points]
+        pilot_calculation_configs = [utils.return_motif_config(configs[i],equilibrium_config) for i in end_points]
     available_mask[end_points] = False
     seen_configs = [configs[i] for i in end_points]
     indicies[:,0] = end_points
@@ -119,35 +121,6 @@ def smart_group_by_emd(configs: list[Atoms], ngroups: int, k: int, equilibrium_c
     
     return indicies, pilot_calculation_configs
 
-def return_motif_config(config: Atoms, equilibrium_config: Atoms) -> Atoms:
-    '''
-    Some positions may be wrapped to larger cell sizes. 
-    '''
-    motif_config = config.copy()
-    lattice_vectors = np.array(config.cell)
-    #first search surrounding space in case config positions are wrapped. (may need to be edited for non-square cells?)
-    motif_extended = []
-    
-    motif = utils.get_equilibrium_motif(config,equilibrium_config)
-    
-    for i,j,k in product(range(-1,2),range(-1,2),range(-1,2)):
-        for motif_pos in motif:
-            pos = (motif_pos + np.array([i,j,k]))
-            #pos_cart = pos[0] * lattice_vectors[0] + pos[1] * lattice_vectors[1] + pos[2] * lattice_vectors[2]
-            motif_extended.append(pos)
-            
-    # notice this is very similar to that used in mlipts.codes.vasp.set_magmom, could be generalized. 
-    A = config.get_scaled_positions()
-    B = np.array(motif_extended)
-    diff = A[:, None, :] - B[None, :, :]  
-    dist2 = np.sum(diff**2, axis=2)       
-    closest_indices = np.argmin(dist2, axis=1)
-    motif_new = B[closest_indices]
-    
-    motif_config.set_scaled_positions(motif_new)
-
-    return motif_config
-    
     
 def fetch_cell_norm_diff(configs: list[Atoms]):
     

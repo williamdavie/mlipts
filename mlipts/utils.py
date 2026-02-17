@@ -230,4 +230,51 @@ def vectors_angle(vec1,vec2):
     return np.arccos(cosAngle)
 
 
-        
+    
+def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase.Atoms:
+    '''
+    Some positions may be wrapped to larger cell sizes. 
+    
+    <!> can generalise with set_magmom() in future.
+    '''
+    motif_config = config.copy()
+    
+    cell = config.cell
+    minimal_cell = equilibrium_config.cell
+    # create a high symmetry configuration for an expanded cell
+    expanded_config = equilibrium_config.copy()
+
+    scaling_factor = round(np.linalg.det(cell)/np.linalg.det(minimal_cell))
+    volume_scaling_factor = (np.linalg.det(cell)/scaling_factor)/np.linalg.det(minimal_cell)
+    expanded_cell =  (volume_scaling_factor)**(1/3) * minimal_cell
+    
+    expanded_config.set_cell(expanded_cell)
+    expanded_config.set_scaled_positions(equilibrium_config.get_scaled_positions())
+    
+    # now expand this cell to the input supercell.
+    
+    S = get_supercell_matrix(cell,expanded_cell)
+    
+    if np.allclose(S, np.round(S), atol=1e-4):
+        supercell_motif = ase.build.make_supercell(expanded_config,np.round(S))
+    else:
+        raise ValueError('cannot set magmom for configurations with non-interger supercell matricies, maybe need to use a conversion before using as input data.')
+
+    positions_extended = []
+    for i,j,k in product(range(-1,2),range(-1,2),range(-1,2)):
+        for l,pos in enumerate(supercell_motif.get_positions()):
+            new_pos = pos + np.array([i,j,k]) @ supercell_motif.cell
+            #pos_cart = pos[0] * lattice_vectors[0] + pos[1] * lattice_vectors[1] + pos[2] * lattice_vectors[2]
+            positions_extended.append(new_pos)
+            
+    # notice this is very similar to that used in mlipts.codes.vasp.set_magmom, could be generalized. 
+    A = config.get_positions()
+    B = np.array(positions_extended)
+    diff =  B[None, :, :]  - A[:,None,:]
+    dist2 = np.sum(diff**2, axis=2)       
+    closest_indices = np.argmin(dist2, axis=1)
+    positions_new = B[closest_indices]
+    
+    motif_config.set_positions(positions_new)
+
+    return motif_config

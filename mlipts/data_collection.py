@@ -316,7 +316,7 @@ class DataCollection():
         
         if smart_convergence == True:
             if equilibrium_config is None:
-                raise ValueError('Cannot perform smart convergence without an expected structure (expected_motif).')
+                raise ValueError('Cannot perform smart convergence without an expected structure (equilibrium_config).')
             QM_group_indicies, pilot_calculation_configs = group.smart_group_calcs(self.initialized_QM_dirs,ngroups=npartitions,equilibrium_config=equilibrium_config,calc_code=QMcode,pilot_calculations=pilot_calculations)
             if pilot_calculations:
                 n_main_calcs = len(self.initialized_QM_dirs)

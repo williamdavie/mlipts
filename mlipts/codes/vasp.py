@@ -12,10 +12,9 @@ import numpy as np
 import shutil
 import py4vasp
 from pathlib import Path
-
 from mlipts import utils
-
 from itertools import product
+import ase.build
 
 
 def build_vasp_calculation(vasp_base_dir: str, config: ase.Atoms, calc_name: str, outdir: str) -> str: 
@@ -178,6 +177,7 @@ def set_magmom_one_directory(magmom_motif_config: ase.Atoms, vasp_calc_dir: str)
     '''
     # This function is quite brute force and is oppitunity to optimize.
     
+    # read data
     minimal_cell = np.array(magmom_motif_config.cell)
     try:
         motif_magmoms = magmom_motif_config.get_initial_magnetic_moments()
@@ -186,62 +186,73 @@ def set_magmom_one_directory(magmom_motif_config: ase.Atoms, vasp_calc_dir: str)
     except:
         raise ValueError('magnetic moment motif input file must contain positions and initial moments.')
 
-    # define all possible positions
     input_atoms = ase.io.read(f'{vasp_calc_dir}/POSCAR')
     cell = np.array(input_atoms.cell)
     
-    # regardless whether the supercell matrix is diagonal or not, if expand by the determinant + 1 in all directions, we capture all required cases - 
-    # Note <!!> in theory this extremely inefficient, but with vector algebra and that performing DFT on massive supercells is unlikely, this is not a bottleneck.  
+    # create a high symmetry configuration for an expanded cell
+    expanded_magmom_motif_config = magmom_motif_config.copy()
+
+    scaling_factor = round(np.linalg.det(cell)/np.linalg.det(minimal_cell))
+    volume_scaling_factor = (np.linalg.det(cell)/scaling_factor)/np.linalg.det(minimal_cell)
+    expanded_cell =  (volume_scaling_factor)**(1/3) * minimal_cell
     
-    scaling_factor = round(np.linalg.det(cell)/np.linalg.det(minimal_cell)) # intergers 1,2,3 .. etc
-    Nx = Ny = Nz = scaling_factor + 1
+    expanded_magmom_motif_config.set_cell(expanded_cell)
+    expanded_magmom_motif_config.set_scaled_positions(motif_scaled_pos)
+    expanded_magmom_motif_config.set_initial_magnetic_moments(motif_magmoms)
     
-    input_pos_scaled = utils.get_scaled_reference_positions(config=input_atoms,
-                                                            equilibrium_config=magmom_motif_config)
+    # now expand this cell to the input supercell.
+    
+    S = utils.get_supercell_matrix(cell,expanded_cell)
+    
+    if np.allclose(S, np.round(S), atol=1e-4):
+        supercell_magmom_motif = ase.build.make_supercell(expanded_magmom_motif_config,np.round(S))
+    else:
+        raise ValueError('cannot set magmom for configurations with non-interger supercell matricies, maybe need to use a conversion before using as input data.')
+    
+    final_cell = supercell_magmom_motif.cell
+    final_elements =supercell_magmom_motif.get_chemical_symbols()
+    final_magmoms =supercell_magmom_motif.get_initial_magnetic_moments()
     
     possible_vectors = []
-    # by expanding range to (-1,N+1, variations of wrapped co-ords outputed by the MD calculation. 
-    for i,j,k in product(range(-1,Nx+1),range(-1,Ny+1),range(-1,Nz+1)):
+    # by expanding range to (-1,1), variations of wrapped co-ords outputed by the MD calculation are dealt with.
+    for i,j,k in product(range(-1,2),range(-1,2),range(-1,2)):
         possible_vectors.append(np.array([i,j,k]))
     expected_positions = [] # expected for a relaxed lattice
     expected_mag_moments = []
     expected_elements = []
     for vecs in possible_vectors:
-        for i,motif_pos in enumerate(motif_scaled_pos):
-            pos = (motif_pos + vecs)
+        for l,equilibrium_pos in enumerate(supercell_magmom_motif.get_positions()):
+            pos = equilibrium_pos + vecs @ final_cell
             expected_positions.append((pos))
-            expected_elements.append(motif_elements[i])
-            expected_mag_moments.append(motif_magmoms[i]) # set corresponding magmom
+            expected_elements.append(final_elements[l])
+            expected_mag_moments.append(final_magmoms[l]) # set corresponding magmom
    
-    # need some consideration of atomic species then the function is pretty much safe, best way to just loop through each species and compute distances.
-        
-    # find the positions in POSCAR corresponding to positions in motif
-    A = input_pos_scaled
+    # Now match magmom according to minimum distance and element.
+    
+    A = input_atoms.positions
     B = np.array(expected_positions)
     all_diff = B[None,:,:] - A[:, None, :]
     all_dist2 = np.sum(all_diff**2, axis=2)  
     
     magmoms = np.zeros((len(input_atoms),3)) 
     
-    
     for i,atom in enumerate(input_atoms):
         symbol = atom.symbol
         element_indices = [i for i, val in enumerate(expected_elements) if val == symbol]
         B_this_element = B[np.array(element_indices), :]
-        diff = B_this_element - input_pos_scaled[i]
+        diff = B_this_element - A[i]
         dist2 = np.sum(diff**2, axis=1)  
         closest_index = np.argmin(dist2)
         true_index = np.where(dist2[closest_index]==all_dist2)[1][0]
         magmoms[i] = expected_mag_moments[true_index]
     
-    # define magmom str
+    # with magmom known can define magmom str
     magmom_str = 'MAGMOM = '
     for i, pos in enumerate(input_atoms.positions):
         mx,my,mz = magmoms[i][0:3]
         magmom_str += f'{mx} {my} {mz} '
         
     input_atoms.set_initial_magnetic_moments(magmoms)
-    ase.io.write('text_magmom.xyz',input_atoms)
     writeMAGMOM(f'{vasp_calc_dir}/INCAR',new_magmom_str=magmom_str)
     
     return None
