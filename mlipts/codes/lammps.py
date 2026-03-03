@@ -17,6 +17,7 @@ The user provides a 'base directory' including:
 import os, sys
 import shutil
 import ase.io
+import ase.build
 from pathlib import Path
 import numpy as np
 import re
@@ -489,3 +490,102 @@ def triclinic_restricted_to_general(config: ase.Atoms):
 
     return new_config
         
+        
+#---------------------------------------------------------------------------
+# Generating .dat files for different configurations.
+
+# generating different types of defects and supercells in the lammps .dat files.
+#---------------------------------------------------------------------------
+
+
+def generate_supercell_dat(base_config_path: str, supercell_matrix: np.ndarray, atom_style: str='full'):
+    '''
+    Given an initial .xyz file, generates a lammps dat for a supercell.
+    '''
+    config = ase.io.read(base_config_path)
+    new_config = ase.build.make_supercell(config,supercell_matrix)
+    
+    if atom_style == 'full':
+        assert len(config.get_initial_charges()) != 0, 'To write lammps .dat with atom_style=full, input configuration must have initial charges'
+    
+    ase.io.lammpsdata.write_lammps_data(str(Path(base_config_path).with_suffix('')) + '_supercell.dat',new_config,atom_style=atom_style)
+    
+    return new_config
+
+
+def generate_defect_cell_dat(base_config_path: str, targets: dict[str, int], atom_style='full'):
+    '''
+    Given an initial .xyz file, and a dictionary of desired defect, generates a lammps dat file that contains a defect.
+    
+    Parameters
+    ----------
+    
+    base_config_path: str
+        .xyz file containing an initial configuration
+    targets: dict[str, int]
+        dictionary defining the elements involved with defect. Format: 'element': count
+    
+    Returns
+    -------
+
+    config: ase.Atoms
+        defected atomic configuration.
+    '''
+    
+    config = ase.io.read(base_config_path)
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    
+    # find smallest atom count (should have highest charge).
+    minimum_count = min(targets.values()) 
+    minimum_key = [key for key in targets if targets[key]==minimum_count][0] # if more than one value just select the first.
+    
+    # choose largest elements
+    old_config = config.copy()
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    removed_largest = []
+    min_key_indices = np.where(symbols == minimum_key)[0]
+    for l in range(minimum_count):
+        
+        del config[min_key_indices[l]]
+        removed_largest.append(min_key_indices[l])
+
+    # remove nearest neighbours of highest charge element.
+    surrounding_elements = [key for key in targets if targets[key]!=minimum_count]
+    for j in surrounding_elements:
+        to_remove = find_nearest_neighbours(old_config,removed_largest,Nneighbours=targets[j],target_element=j)
+        for k in to_remove:
+            del config[k]
+
+        symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    
+    if atom_style == 'full':
+        assert len(config.get_initial_charges()) != 0, 'To write lammps .dat with atom_style=full, input configuration must have initial charges'
+    
+    # write lammps file.
+    ase.io.lammpsdata.write_lammps_data(str(Path(base_config_path).with_suffix('')) + '_defect.dat',config,atom_style=atom_style)
+
+    return config
+
+        
+def find_nearest_neighbours(config: ase.Atoms, central_atoms: list[int], Nneighbours: int, target_element: str='O'):
+    '''Finds nearest N neighbours of central_atoms (indicies of the config.)'''
+    
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    atom_indices = np.where(symbols == target_element)[0]
+    
+    atom_positions = config.get_positions()[atom_indices]
+    
+    original_indices = []
+    distances = []
+    for i in central_atoms:
+        target_position = config.positions[i]
+        distances.extend(np.linalg.norm(atom_positions - target_position,axis=1))
+        original_indices.extend([i for i in range(len(atom_positions))])
+
+    min_distances = np.array(original_indices)[np.argsort(distances)]
+
+    atom_indices = atom_indices[min_distances]
+    
+    return atom_indices[0:Nneighbours] 
+    
+    

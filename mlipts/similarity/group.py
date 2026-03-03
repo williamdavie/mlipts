@@ -18,7 +18,7 @@ def smart_group_calcs(calc_dirs: list[str],
                       calc_code: str='vasp', group_by: str='emd',
                       equilibrium_config: Atoms=None,
                       pilot_calculations: bool=True) -> tuple[list[str]]:
-    '''
+    ''' 
     Given a set of calculation paths (calc_dirs), group to maximise calculation convergence when batched to a supercomputer.
     
     Parameters

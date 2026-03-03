@@ -244,15 +244,19 @@ class UncertaintyQuantification():
             
             self.all_configs[:,i] = current_configs
             
-    def filter_configs(self, tol: float, max_configs: int=None, min_configs: int=None,method='dubois',selection='largest') -> None:
+    def filter_configs(self, tol: float, max_configs: int=None, min_configs: int=None,method='dubois',selection='largest', max_tol: float=None) -> None:
         
         if self.uncertainties is None:
             if method == 'dubois':
                 self.uncertainties = self.dubois_uncertainty()
             else:
                 raise ValueError(f'Method: {method}, unknown')
-        
-        self.indices = np.where(self.uncertainties > tol)[0]
+            
+        if max_tol is None:
+            self.indices = np.where(self.uncertainties > tol)[0]
+        else:
+            self.indices = np.where((max_tol > self.uncertainties) & (self.uncertainties > tol))[0]
+            
         if max_configs is not None:
             if len(self.indices) > max_configs:
                 self.indices = np.argsort(self.uncertainties)[::-1][0:max_configs]

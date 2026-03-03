@@ -238,6 +238,11 @@ class DataCollection():
             print(f'Number of active configs = number of QM calculation directories = {len(self.active_MD_configs)}')
         
         for i,config in enumerate(configs_for_build):
+                        
+            # for vasp, elements must be sorted my symbol before being written.
+            config = config[np.argsort(config.get_chemical_symbols())[::-1]]
+            # for general use one must ensure POTCAR is the same order.
+        
             extension = '' if len(configs_for_build)==1 else f'_c_#{i}'
             if QMcode == 'vasp':
                 if QM_base_dir is not None:
