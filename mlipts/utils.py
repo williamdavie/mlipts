@@ -6,6 +6,7 @@ MLIPTS utilities.
 import numpy as np
 from itertools import product
 import ase
+import scipy.spatial
 
 #------------------------------Reference positions------------------------------------
 '''
@@ -278,3 +279,127 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
     motif_config.set_positions(positions_new)
 
     return motif_config
+
+
+#-------------------------------Defects---------------------------------------------
+
+
+def generate_defect(config: ase.Atoms, targets: dict[str, int], defect_type: str='schottkey') -> ase.Atoms:
+    '''
+    Fenerates a config that contains a defect.
+    
+    Parameters
+    ----------
+    
+    config: ase.Atoms
+        an initial configuration of atoms
+    targets: dict[str, int]
+        dictionary defining the elements involved with defect. Format: 'element': count
+    defect_type: str
+        defines the defect type 'schottkey' or 'frenkel'. 
+    
+    Returns
+    -------
+
+    config: ase.Atoms
+        defected atomic configuration.
+    '''
+
+    if defect_type == 'schottkey':
+        config = generate_schottkey_defect(config,targets)
+    elif defect_type == 'frenkel':
+        config = generate_frenkel_defect(config,targets)
+    
+    
+    return config
+
+
+def generate_schottkey_defect(config: ase.Atoms, targets: dict[str, int]):
+    '''generate schottkey defect'''
+    
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    
+    # find smallest atom count (should have highest charge).
+    minimum_count = min(targets.values()) 
+    minimum_key = [key for key in targets if targets[key]==minimum_count][0] # if more than one value just select the first.
+    
+    # choose largest elements
+    old_config = config.copy()
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    removed_largest = []
+    min_key_indices = np.where(symbols == minimum_key)[0]
+    for l in range(minimum_count):
+        
+        del config[min_key_indices[l]]
+        removed_largest.append(min_key_indices[l])
+
+    # remove nearest neighbours of highest charge element.
+    surrounding_elements = [key for key in targets if targets[key]!=minimum_count]
+    for j in surrounding_elements:
+        to_remove = find_nearest_neighbours(old_config,removed_largest,Nneighbours=targets[j],target_element=j)
+        for k in to_remove:
+            del config[k]
+            
+    return config
+
+    
+def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int]):
+    '''generate frenkel defect'''
+    
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    
+    for target_element in targets.keys():
+        atom_indices = np.where(symbols == target_element)[0]
+        count = targets[target_element]
+        interstitial_sites = find_interstitial_sites(config, count)
+        for i in range(count):
+            config.positions[atom_indices[i]] = interstitial_sites[i]
+        
+    return config
+
+
+def find_nearest_neighbours(config: ase.Atoms, central_atoms: list[int], Nneighbours: int, target_element: str='O'):
+    '''Finds nearest N neighbours of central_atoms (indicies of the config.)'''
+    
+    symbols = np.array(config.get_chemical_symbols(),dtype='U10')
+    atom_indices = np.where(symbols == target_element)[0]
+    
+    atom_positions = config.get_positions()[atom_indices]
+    
+    original_indices = []
+    distances = []
+    for i in central_atoms:
+        target_position = config.positions[i]
+        distances.extend(np.linalg.norm(atom_positions - target_position,axis=1))
+        original_indices.extend([i for i in range(len(atom_positions))])
+
+    min_distances = np.array(original_indices)[np.argsort(distances)]
+
+    atom_indices = atom_indices[min_distances]
+    
+    return atom_indices[0:Nneighbours] 
+    
+    
+def find_interstitial_sites(atoms: ase.Atoms, count: int, grid_density: int=10):
+    '''Basic function to find an interstitial site.'''
+    
+    pos = atoms.get_positions()
+    cell = atoms.get_cell()
+    
+    x = np.linspace(0, 0.5, grid_density)
+    grid_points_frac = np.array(np.meshgrid(x, x, x)).T.reshape(-1, 3)
+    grid_points_cart = np.dot(grid_points_frac, cell)
+    
+    tree = scipy.spatial.KDTree(pos)
+    
+    distances, _ = tree.query(grid_points_cart)
+    
+    best_idx = np.argmax(distances)
+    best_indices = np.argsort(distances)[::-1]
+
+    best_sites = grid_points_cart[best_indices[0:count]]
+
+    return best_sites
+
+
+    
