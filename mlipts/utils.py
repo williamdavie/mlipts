@@ -286,7 +286,7 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
 
 def generate_defect(config: ase.Atoms, targets: dict[str, int], defect_type: str='schottkey') -> ase.Atoms:
     '''
-    Fenerates a config that contains a defect.
+    Generates a config that contains a defect.
     
     Parameters
     ----------

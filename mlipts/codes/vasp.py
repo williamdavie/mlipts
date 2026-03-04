@@ -78,15 +78,62 @@ def write_POSCAR_str(config: ase.Atoms) -> str:
     return poscar
 
 
-def append_vasp_calc_to_database(database_file: str, vasp_dir: str):
-    atoms = ase.io.read(f"{vasp_dir}/vasprun.xml")
+def append_vasp_calc_to_database(database_file: str, vasp_dir: str, save_magmoms: bool=True, save_charge: bool=True):
+
     outcar_str = open(f'{vasp_dir}/OUTCAR','r').read()
     if 'aborting loop EDIFF was not reached (unconverged)' in outcar_str:
-        print('Self consistency failed, not saving data.')
+        print(f'Self consistency failed in {vasp_dir}, not saving data.')
         return None
+
+    # read atom data.
+    atoms = ase.io.read(f"{vasp_dir}/vasprun.xml")
+    
+    if save_magmoms:
+        magmoms = fetch_OUTCAR_magnetization(f'{vasp_dir}/OUTCAR',len(atoms))
+        atoms.set_array('magnetic_moments',magmoms)
+    if save_charge:
+        charges = fetch_OUTCAR_total_charge(f'{vasp_dir}/OUTCAR',len(atoms))
+        atoms.set_array('total_charge',charges)
+        
     ase.io.write(database_file, atoms, format="extxyz", append=True)
     return None
 
+
+def fetch_OUTCAR_total_charge(outcar: str, atom_count: int):
+    """Reads total charge from OUTCAR"""
+    return read_OUTCAR_atom_totals(outcar,'total charge', atom_count)
+
+def fetch_OUTCAR_magnetization(outcar: str, atom_count: int): 
+    """Reads magnetic_moments from OUTCAR"""
+    
+    drcts = ['x','y','z']
+    
+    magmoms = np.zeros((atom_count,3))
+    
+    for i,drct in enumerate(drcts):
+        magmoms[:,i] = read_OUTCAR_atom_totals(outcar,f'magnetization ({drct})',atom_count) 
+
+    return magmoms
+
+
+def read_OUTCAR_atom_totals(outcar: str, label: str, atoms_count: int):
+    """Reads atom data from outcar given a label"""
+    
+    lines = open(outcar).readlines()
+    
+    # want to store the last instance of this data.
+    location = 0
+    for i,line in enumerate(reversed(lines)):
+        if label in line:
+            location = len(lines) - i
+            break
+    
+    data = []
+    for line in lines[location+3:location+3+atoms_count]:
+        vals = line.split()
+        data.append(float(vals[-1]))
+    
+    return np.array(data)
 
 
 def fetch_configs_vasp(calc_dirs: list[str]) -> list[ase.Atoms]:
@@ -104,9 +151,6 @@ def fetch_configs_vasp(calc_dirs: list[str]) -> list[ase.Atoms]:
         
     return configs 
             
-        
-
-
 '''
 Want some native way of editing vasp calculations. Namely (for my work) increasing magmom for supercells. 
 '''
