@@ -78,16 +78,18 @@ def write_POSCAR_str(config: ase.Atoms) -> str:
     return poscar
 
 
-def append_vasp_calc_to_database(database_file: str, vasp_dir: str, save_magmoms: bool=True, save_charge: bool=True):
+def append_vasp_calc_to_database(database_file: str, vasp_dir: str, save_magmoms: bool=True, save_charge: bool=True, store_failed: bool=True):
 
+     # read atom data.
+    atoms = ase.io.read(f"{vasp_dir}/vasprun.xml")
+    
     outcar_str = open(f'{vasp_dir}/OUTCAR','r').read()
     if 'aborting loop EDIFF was not reached (unconverged)' in outcar_str:
         print(f'Self consistency failed in {vasp_dir}, not saving data.')
+        if store_failed:
+            ase.io.write('failed_to_converge.xyz', atoms, format="extxyz", append=True)
         return None
 
-    # read atom data.
-    atoms = ase.io.read(f"{vasp_dir}/vasprun.xml")
-    
     if save_magmoms:
         magmoms = fetch_OUTCAR_magnetization(f'{vasp_dir}/OUTCAR',len(atoms))
         atoms.set_array('magnetic_moments',magmoms)
