@@ -378,6 +378,18 @@ def find_nearest_neighbours(config: ase.Atoms, central_atoms: list[int], Nneighb
     atom_indices = atom_indices[min_distances]
     
     return atom_indices[0:Nneighbours] 
+
+
+def insert_element_to_interstitial(config: ase.Atoms, element: str, count: int=1):
+    """Adds N elements to N interstitial sites"""
+    
+    interstitial_sites = find_interstitial_sites(config, count)
+    
+    for site in interstitial_sites:
+        new_atom = ase.Atom(element, position=site)
+        config.append(new_atom)
+        
+    return config
     
     
 def find_interstitial_sites(atoms: ase.Atoms, count: int, grid_density: int=10):

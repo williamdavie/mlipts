@@ -1,5 +1,0 @@
-ase
-py4vasp
-numpy
-scipy
-matplotlib
