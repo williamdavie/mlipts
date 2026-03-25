@@ -1,37 +1,28 @@
-'''
+"""
 @author: William Davie
 
 File containing lammps specific functionality. Used to build many lammps calculations.
 
-Main functionality is to automatically set up many LAMMPS calculations, snapshots of each calculation can then used for QM caclulations. 
+Main functionality is to automatically set up many LAMMPS calculations, snapshots of each calculation can then used for QM caclulations.
+"""
 
-The user provides a 'base directory' including:
-
-    The input (in.*) file:
-        - this should include the potential specification, often this will refer to a file elsewhere and a minimization task. 
-        - Variables marked with '£' which will be replaced by values in a list/array.
-        
-    The .dat file containing atomic positions
-'''
-
-import os, sys
-import shutil
-import ase.io
-import ase.build
-from pathlib import Path
-import numpy as np
 import re
+import shutil
 from itertools import product
-from ase import Atoms
-from typing import Optional 
+from pathlib import Path
+
+import ase
+import ase.build
+import ase.io
+import numpy as np
 
 from mlipts import utils
 
 
-def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
-    '''
+def read_lammps_output(outdir: str) -> list[ase.Atoms]:
+    """
     Read lammps *md output file.
-    
+
     Parameters
     ----------
     outdir: str
@@ -40,214 +31,214 @@ def read_lammps_output(outdir: str, pbc: Optional[bool]=True) -> list[Atoms]:
         list of atom types, ordered as in lammps output
     pbc: Optional[bool]
         define the type of periodic boundry conditions used in simulation.
-    
-    Returns 
+
+    Returns
     -------
     configs: list[Atoms]
         list of atomic configurations fetched from dump file. Returned as a list of ase.Atoms types.
-    '''
-    
-    outdir_list = list(Path(outdir).glob('md.*'))
-    if outdir_list: 
-        md_output = open(outdir_list[0],'r').read()
+    """
+
+    outdir_list = list(Path(outdir).glob("md.*"))
+    if outdir_list:
+        with open(outdir_list[0], "r", encoding="utf-8") as out_file:
+            md_output = out_file.read()
     else:
-        print(f'lammps output file not found in {outdir}.')
-        return [] # if output not found just give back nothing.
+        print(f"lammps output file not found in {outdir}.")
+        return []  # if output not found just give back nothing.
     split_lines = md_output.splitlines()
-    
-    timesteps = [] # snapshot time steps.
-    all_atomic_positions = [] 
+
+    timesteps = []  # snapshot time steps.
+    all_atomic_positions = []
     all_lattice_vectors = []
     type_labels = []
-    
-    num_snapshots = md_output.count('ITEM: TIMESTEP')
-    num_atoms = int(split_lines[split_lines.index('ITEM: NUMBER OF ATOMS') + 1])
-    
-    #atom_information_string = split_lines[split_lines.index('')]
-    
-    lattice_vectors = np.zeros((3,3))
-        
-    for i,line in enumerate(split_lines):
-        
-        if 'ITEM: TIMESTEP' in line:
-            timesteps.append(split_lines[i+1])
 
-        if 'ITEM: BOX BOUNDS' in line:
-            aline = split_lines[i+1].split()
-            bline = split_lines[i+2].split()
-            cline = split_lines[i+3].split()
+    num_snapshots = md_output.count("ITEM: TIMESTEP")
+    num_atoms = int(split_lines[split_lines.index("ITEM: NUMBER OF ATOMS") + 1])
+
+    # atom_information_string = split_lines[split_lines.index('')]
+
+    lattice_vectors = np.zeros((3, 3))
+
+    for i, line in enumerate(split_lines):
+
+        if "ITEM: TIMESTEP" in line:
+            timesteps.append(split_lines[i + 1])
+
+        if "ITEM: BOX BOUNDS" in line:
+            aline = split_lines[i + 1].split()
+            bline = split_lines[i + 2].split()
+            cline = split_lines[i + 3].split()
             # hi - lo
-            xlo,xhi = float(aline[0]),float(aline[1])
-            ylo,yhi = float(bline[0]),float(bline[1])
-            zlo,zhi = float(cline[0]),float(cline[1])
-            
+            xlo, xhi = float(aline[0]), float(aline[1])
+            ylo, yhi = float(bline[0]), float(bline[1])
+            zlo, zhi = float(cline[0]), float(cline[1])
+
             # non-diagonal cells
-            if (len(aline),len(bline),len(cline)) == (3,3,3):
-                xy,xz,yz = float(aline[2]),float(bline[2]),float(cline[2])
+            if (len(aline), len(bline), len(cline)) == (3, 3, 3):
+                xy, xz, yz = float(aline[2]), float(bline[2]), float(cline[2])
                 # see lammps docs https://docs.lammps.org/Howto_triclinic.html
-                xlo -= min(0,xy,xz,xy+xz)
-                xhi -= max(0,xy,xz,xy+xz)
-                ylo -= min(0,yz)
-                yhi -= max(0,yz)
-                
-                lattice_vectors[1,0] = xy
-                lattice_vectors[2,0] = xz
-                lattice_vectors[2,1] = yz
-                
-                      
-            lattice_vectors[0,0] = xhi - xlo
-            lattice_vectors[1,1] = yhi - ylo
-            lattice_vectors[2,2] = zhi - zlo
-            
-        
+                xlo -= min(0, xy, xz, xy + xz)
+                xhi -= max(0, xy, xz, xy + xz)
+                ylo -= min(0, yz)
+                yhi -= max(0, yz)
+
+                lattice_vectors[1, 0] = xy
+                lattice_vectors[2, 0] = xz
+                lattice_vectors[2, 1] = yz
+
+            lattice_vectors[0, 0] = xhi - xlo
+            lattice_vectors[1, 1] = yhi - ylo
+            lattice_vectors[2, 2] = zhi - zlo
+
             all_lattice_vectors.append(lattice_vectors.copy())
-    
-        
-        if 'ITEM: ATOMS' in line:
-            atomic_positions = np.zeros(shape=(num_atoms,3))
-            types = np.zeros(shape=(num_atoms))
+
+        if "ITEM: ATOMS" in line:
+            atomic_positions = np.zeros(shape=(num_atoms, 3))
+            types = np.zeros(shape=num_atoms)
             line_split = line.split()
-            
+
             args = line_split[2:]
-            
-            id_index = args.index('id')
-            type_index = args.index('type')
-            x_index = args.index('x')
-            y_index = args.index('y')
-            z_index = args.index('z')
-            element_index = args.index('element')
-            
+
+            type_index = args.index("type")
+            x_index = args.index("x")
+            y_index = args.index("y")
+            z_index = args.index("z")
+            element_index = args.index("element")
+
             these_labels = []
-            for atom in range(0,num_atoms):
-                atom_line_split = split_lines[i+atom+1].split()
-                types[atom] = int(atom_line_split[type_index]) 
-                
-                atomic_positions[atom,0] = float(atom_line_split[x_index])
-                atomic_positions[atom,1] = float(atom_line_split[y_index]) 
-                atomic_positions[atom,2] = float(atom_line_split[z_index]) 
-                
+            for atom in range(0, num_atoms):
+                atom_line_split = split_lines[i + atom + 1].split()
+                types[atom] = int(atom_line_split[type_index])
+
+                atomic_positions[atom, 0] = float(atom_line_split[x_index])
+                atomic_positions[atom, 1] = float(atom_line_split[y_index])
+                atomic_positions[atom, 2] = float(atom_line_split[z_index])
+
                 these_labels.append(atom_line_split[element_index])
-            
+
             type_labels.append(these_labels)
-            
-            '''
-            print(atomic_positions)
-               
-            # as required by vasp, must be type sorted. 
-            types_sorted = np.argsort(types)
-            types,type_counts = np.unique(types,return_counts=True)
-            num_types = np.max(types)
-            
-            '''
             all_atomic_positions.append(atomic_positions)
 
-   # for i in types:
-      #  type_labels.extend([atom_types[int(i-1)] for j in range(type_counts[int(i-1)])])
-    
-    configs: list[Atoms] = []
+    configs: list[ase.Atoms] = []
     for i in range(num_snapshots):
-        config = Atoms(symbols=type_labels[i],positions=all_atomic_positions[i],cell=all_lattice_vectors[i],pbc=True)
+        config = ase.Atoms(
+            symbols=type_labels[i],
+            positions=all_atomic_positions[i],
+            cell=all_lattice_vectors[i],
+            pbc=True,
+        )
         configs.append(config)
-        
-        
+
     return configs
 
 
-def write_lammps_submission_script(lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str ='.'):
-    '''
+def write_lammps_submission_script(
+    lammps_dirs: list[str], lammps_cmd_line: str, output_directory: str = "."
+):
+    """
     Generates the command line to run a set of lammps directories.
-    '''
+    """
 
-    dirs = ''
-    for dir in lammps_dirs:
-        dirs += f'{dir} '
-        
-    input_path = list(Path(dir).glob('in.*'))[0]
+    dirs = " ".join(lammps_dirs)
+
+    input_path = list(Path(lammps_dirs[0]).glob("in.*"))[
+        0
+    ]  # all generated directories should have same name.
     input_name = input_path.name
-       
-    output_name = 'out.' + input_name.split(".")[1]
+
+    output_name = "out." + input_name.split(".")[1]
     result = f'directories="{dirs}"\n'
-    result += f'cd {output_directory}\n'
-    result+=f'''for i in $directories; 
-do 
+    result += f"cd {output_directory}\n"
+    result += f"""for i in $directories;
+do
 cd $i
 {lammps_cmd_line} -i {input_name} -l {output_name}
 cd -
-done\n'''
-    result += 'cd ..'
-    
+done\n"""
+    result += "cd .."
+
     return result
 
 
-def build_lammps_calculations(base_dir: str, variables: dict, outdir: str='.') -> list[str]:
-    '''
-    Generates a set of directories containing input files for lammps calculations. 
+def build_lammps_calculations(
+    base_dir: str, variables: dict, outdir: str = "."
+) -> list[str]:
+    """
+    Generates a set of directories containing input files for lammps calculations.
     Reads the base directory, searches for a set of marked variables '£' and generates a directory for all values in the provided dictionary.
-    
+
     Parameters
     ----------
     base_dir: str
         path to the base lammps directory containing a in.* and .dat file. in.* is expected to include some variables marked '£'
     variables: dict
         keys should be formated as '£*' with corrosponding arrays.
-    outdir: str 
-        output directory for new calculations  
-        
+    outdir: str
+        output directory for new calculations
+
     Returns
     -------
     new_dirs: list[str]
         a list of paths containing all calculations to be run.
-        
+
     Raises
     ------
     FileNotFoundError:
         if in.* or *.dat not found in base_dir
     NameError:
         if a key in variables cannot be found in *.in
-    
-    '''
-    
-    build = lammpsBuild(f'{base_dir}',variables)
+
+    """
+
+    build = lammpsBuild(f"{base_dir}", variables)
     build.read_base_directory()
     build.generate_calculations(outdir=outdir)
     return build.new_dirs
 
 
 def append_lammps_calc_to_database(database_file: str, calc_dir: str):
-    
+    """
+
+    Parameters
+    ----------
+    Args:
+        database_file (str): _description_
+        calc_dir (str): _description_
+    """
+
     atoms = read_lammps_output(calc_dir)
 
     ase.io.write(database_file, atoms, format="extxyz", append=True)
 
-class lammpsBuild():
-    
+
+class lammpsBuild:
+
     def __init__(self, lammps_base_dir: str, variables: dict) -> None:
-        '''
-        Initialize a lammps build. 
-        
+        """
+        Initialize a lammps build.
+
         Parameters
         ----------
         lammps_base_dir: str
             path to directory containing files for a lammps calculation
         variables: dict
             dictionary of variables to build new lammps directories from.
-        '''
+        """
         self.lammps_base_dir = lammps_base_dir
-        
+
         self.input = None
-        
+
         self.variables = variables
         self.variable_keys = list(self.variables.keys())
-        
-        self.new_dirs = []
-        
-        return None
 
-        
+        self.new_dirs = []
+        self.input_files = list(Path(self.lammps_base_dir).glob("in.*"))
+        self.dat_files = list(Path(self.lammps_base_dir).glob("*.dat"))
+
     def read_base_directory(self) -> None:
-        '''
+        """
         Reads files and errors if base directory does not have the correct format for constructing multiple directories.
-        
+
         Raises
         ------
         FileNotFoundError:
@@ -256,258 +247,297 @@ class lammpsBuild():
             if multiple in.* or *.dat files are found
         NameError:
             if a key in variables cannot be found in *.in
-        '''
-        
-        self.input_files = list(Path(self.lammps_base_dir).glob('in.*'))
-        self.dat_files = list(Path(self.lammps_base_dir).glob('*.dat'))
-        
-        if not self.input_files:
-            raise FileNotFoundError('No input (in.*) file found in base directory')
-        if not self.dat_files:
-            raise FileNotFoundError('No atomic data (*.dat) file found in base directory')
-        if len(self.input_files) > 1:
-            raise FileExistsError('Cannot have multiple input files (in.*)')
+        """
 
-        self.input = open(self.input_files[0],'r').read()
-    
+        if not self.input_files:
+            raise FileNotFoundError("No input (in.*) file found in base directory")
+        if not self.dat_files:
+            raise FileNotFoundError(
+                "No atomic data (*.dat) file found in base directory"
+            )
+        if len(self.input_files) > 1:
+            raise FileExistsError("Cannot have multiple input files (in.*)")
+
+        with open(self.input_files[0], "r", encoding="utf-8") as input_file:
+            self.input = input_file.read()
+
         # remove comments
         in_no_com = []
         for line in self.input.splitlines():
-            line_without_comment = line.split('#', 1)[0].rstrip()
+            line_without_comment = line.split("#", 1)[0].rstrip()
             in_no_com.append(line_without_comment)
         self.input = "\n".join(in_no_com)
-        
+
         variables_in_file = list(set(re.findall(r"£\S+", self.input)))
 
         for i in self.variable_keys:
             if i not in variables_in_file:
-                raise NameError(f'Variable {i} in input dictionary not found in lammps input file (in.*)')
-        
-        return None
-    
-    
-    def generate_calculations(self, label: str='lammps', outdir: str='.',random_seed: bool=True) -> None:
-        '''
+                raise NameError(
+                    f"Variable {i} in input dictionary not found in lammps input file (in.*)"
+                )
+
+    def generate_calculations(
+        self, label: str = "lammps", outdir: str = ".", random_seed: bool = True
+    ) -> None:
+        """
         Given variables and a base directory, a set of new calculation directories are generated.
-        '''
-        
-        new_input_files = []
-        new_dir_names = []
+        """
         all_values = list(self.variables.values())
-        
+
         if self.input is None:
             self.read_base_directory()
-        
-        # If multiple variables we need to specify all possible combinations 
+
+        # If multiple variables we need to specify all possible combinations
         for k, combination in enumerate(product(*all_values)):
-            #combination looks like tuple(var1, var2, var2, etc) 
+            # combination looks like tuple(var1, var2, var2, etc)
             new_dir_name = label
             new_input_str = []
             current_variables = {var: None for var in self.variable_keys}
-            
+
             for i, val in enumerate(combination):
                 # label new calculation directory
-                var_name = self.variable_keys[i][1:] # assumes first character is £
-                try:
-                    new_dir_name += f'_{str(var_name).replace("£","")}_{round(val,None)}'
-                except:
+                var_name = self.variable_keys[i][1:]  # assumes first character is £
+
+                if isinstance(val, (int, float)):
+                    new_dir_name += (
+                        f'_{str(var_name).replace("£","")}_{round(val,None)}'
+                    )
+                else:
                     new_dir_name += f'_{str(var_name).replace("£","")}_{round(k,None)}'
                 current_variables[self.variable_keys[i]] = val
-                
-            #now define new str for this combination 
+
+            # now define new str for this combination
             for line in self.input.splitlines():
                 line_split = line.split()
-                
+
                 for var_name in self.variable_keys:
                     if var_name in line_split:
-                        line_split = [str(current_variables[var_name]) if x == var_name else x for x in line_split]
-                        
-            
+                        line_split = [
+                            str(current_variables[var_name]) if x == var_name else x
+                            for x in line_split
+                        ]
+
                 new_line = " ".join(line_split)
                 new_input_str.append(new_line)
-                
+
             new_input_str = "\n".join(new_input_str)
-            
+
             if random_seed:
                 new_input_str = set_random_velocity_seed(new_input_str)
-            
-            self.__write_calculation__(new_dir_name,new_input_str,outdir)
-            
-        return None
-            
-                
-    def __write_calculation__(self, calc_name: str, input_str: str, outdir: str) -> None:
-        '''
+
+            self.__write_calculation__(new_dir_name, new_input_str, outdir)
+
+    def __write_calculation__(
+        self, calc_name: str, input_str: str, outdir: str
+    ) -> None:
+        """
         Given a base directory (self), calculation name and lammps input file string, a new calculation is written.
-        '''
-        
+        """
+
         Path(outdir).mkdir(exist_ok=True)
-    
-        new_dir = outdir + '/' + calc_name 
+
+        new_dir = outdir + "/" + calc_name
         self.new_dirs.append(new_dir)
-        shutil.copytree(self.lammps_base_dir, new_dir ,dirs_exist_ok=True)
-            
-        with open(new_dir + '/' + Path(self.input_files[0]).name, 'w') as f:
+        shutil.copytree(self.lammps_base_dir, new_dir, dirs_exist_ok=True)
+
+        with open(
+            new_dir + "/" + Path(self.input_files[0]).name, "w", encoding="utf-8"
+        ) as f:
             f.write(input_str)
-        
-        return None
-    
+
 
 def set_random_velocity_seed(input_str: str):
-    '''
-    If number of intergers in the 
-    '''
-        
+    """
+    If number of intergers in the
+    """
+
     input_lines = input_str.splitlines()
-    count = 0
     new_input_str = []
-    for i,line in enumerate(input_lines):
+    for line in input_lines:
         line_split = line.split()
-        if line_split: 
-            if line_split[0] == 'velocity':
-                if '£seed' in line:
-                    line_split = [str(np.random.randint(1,999_999)) if x == '£seed' else x for x in line_split]
+        if line_split:
+            if line_split[0] == "velocity":
+                if "£seed" in line:
+                    line_split = [
+                        str(np.random.randint(1, 999_999)) if x == "£seed" else x
+                        for x in line_split
+                    ]
                 else:
-                    raise ValueError('Tried to set a random velocity seed but could not find the keyword "£seed" in the lammps input file.')
-                
+                    raise ValueError(
+                        'Tried to set a random velocity seed but could not find the keyword "£seed" in the lammps input file.'
+                    )
+
         new_line = " ".join(line_split)
         new_input_str.append(new_line)
-        
+
     return "\n".join(new_input_str)
 
 
-
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Reverting a triclinic simulation box from lammps.
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
-# Given a triclinic box configuration from read from lammps (ASE format), 
-# revert to back to a interger diagonal supercell. 
+# Given a triclinic box configuration from read from lammps (ASE format),
+# revert to back to a interger diagonal supercell.
 
-def revert_triclinic_all(configs: list[ase.Atoms], equilibrium_config: ase.Atoms):
-    
+
+def revert_triclinic_all(
+    configs: list[ase.Atoms], equilibrium_config: ase.Atoms, tol: float = 1e-4
+):
+
     reverted_configs = []
-    
+
     for config in configs:
-        
-        S = utils.get_supercell_matrix(config.cell,equilibrium_config.cell)
-        
+
+        S = utils.get_supercell_matrix(config.cell, equilibrium_config.cell)
+
         # if matrix is integer don't change.
         if np.allclose(S, np.round(S), atol=1e-4):
             reverted_configs.append(config)
         else:
-            reverted_config = revert_triclinic_configuration(config,equilibrium_config)
-            reverted_configs.append(reverted_config)
-            
-    return reverted_configs
-    
+            reverted_config = revert_triclinic_configuration(
+                config, equilibrium_config, tol
+            )
+            if reverted_config is not None:
+                reverted_configs.append(reverted_config)
 
-def revert_triclinic_configuration(config: ase.Atoms,equilibrium_config: ase.Atoms):
-    '''
+    return reverted_configs
+
+
+def revert_triclinic_configuration(
+    config: ase.Atoms, equilibrium_config: ase.Atoms, tol: float
+):
+    """
     Multi-step process to revert lammps behaviour of wrapping supercell matricies.
-    '''
-    
+    """
+
     # convert from restricted triclinic to general triclinic and wrap.
     general_config = triclinic_restricted_to_general(config)
-    
-    
+
     # find corresponding supercell
     cell = general_config.cell
     minimal_cell = equilibrium_config.cell
 
-    supercell = utils.retrieve_standard_supercell(cell,minimal_cell)
-    
+    supercell = utils.retrieve_standard_supercell(
+        cell=cell, minimal_cell=minimal_cell, tol=tol
+    )
+
     if supercell is None:
-        raise ValueError(f'Could not find a supercell for the provided configuration with cell: {cell}')
-    
-    
+        print(
+            f"Warning <!> Could not find a supercell for the provided configuration with cell: {cell}"
+        )
+        return None
+
     # revert positions.
 
-    # transformation matrix 
-    A,B,C = supercell[0:3]
-    V = np.dot(A,np.cross(B,C))
+    # transformation matrix
+    A, B, C = supercell[0:3]
+    V = np.dot(A, np.cross(B, C))
 
-    M = 1/V * (general_config.cell.T @ np.array([np.cross(B,C),
-                                          np.cross(C,A),
-                                          np.cross(A,B)]))
-    
+    M = (
+        1
+        / V
+        * (
+            general_config.cell.T
+            @ np.array([np.cross(B, C), np.cross(C, A), np.cross(A, B)])
+        )
+    )
+
     positions = general_config.get_positions()
     new_positions = positions @ np.linalg.inv(M).T
-    
+
     new_config = general_config.copy()
     new_config.set_cell(supercell)
     new_config.set_positions(new_positions)
-        
+
     return new_config
-    
+
 
 def triclinic_restricted_to_general(config: ase.Atoms):
-    '''
+    """
     Converts a restricted to general triclinic cell.
-    
+
     See lammps docs.
-    '''
-    
+    """
+
     restricted_cell = config.cell
-    
+
     # format as saved by ASE (and MLIPTS)
-    lx,ly,lz = restricted_cell[0,0],restricted_cell[1,1],restricted_cell[2,2]
-    xy,xz,yz = restricted_cell[1,0],restricted_cell[2,0],restricted_cell[2,1]
-    
+    lx, ly, lz = restricted_cell[0, 0], restricted_cell[1, 1], restricted_cell[2, 2]
+    xy, xz, yz = restricted_cell[1, 0], restricted_cell[2, 0], restricted_cell[2, 1]
+
     a = lx
     b = np.sqrt(xy**2 + ly**2)
     c = np.sqrt(xz**2 + yz**2 + lz**2)
-    
-    alpha = np.arccos((xy*xz + ly*yz)/(b*c))
-    beta = np.arccos((xz/c))
-    gamma = np.arccos((xy/b))
-    
-    general_cell = ase.geometry.cell.cellpar_to_cell([a, b, c, np.degrees(alpha), np.degrees(beta),np.degrees(gamma)])
-    
-    
+
+    alpha = np.arccos((xy * xz + ly * yz) / (b * c))
+    beta = np.arccos((xz / c))
+    gamma = np.arccos((xy / b))
+
+    general_cell = np.array(
+        ase.geometry.cell.cellpar_to_cell(
+            [a, b, c, np.degrees(alpha), np.degrees(beta), np.degrees(gamma)]
+        ),
+        dtype=float,
+    )
+
     # wrap back to original - unsure if this is robust. Must be tested.
-    if xy !=0: n = 1-round(xy/lx)
-    else: n = 0
-    if xz != 0:  m = 1-round(xz/lx)
-    else: m = 0
-    if yz != 0: k = 1-round(yz/ly)
-    else: k = 0
-    
-    general_cell[1] += n*general_cell[0]
-    general_cell[2] += m*general_cell[0] + k*general_cell[1]
-    
-    new_positions = config.get_positions() + n*general_cell[0]
-    new_positions += m*general_cell[0] + k*general_cell[1]
-    
+    if xy != 0:
+        n = 1 - round(xy / lx)
+    else:
+        n = 0
+    if xz != 0:
+        m = 1 - round(xz / lx)
+    else:
+        m = 0
+    if yz != 0:
+        k = 1 - round(yz / ly)
+    else:
+        k = 0
+
+    general_cell[1] += n * general_cell[0]
+    general_cell[2] += m * general_cell[0] + k * general_cell[1]
+
+    new_positions = config.get_positions() + n * general_cell[0]
+    new_positions += m * general_cell[0] + k * general_cell[1]
+
     # define and return updated configuration
     new_config = config.copy()
-    
+
     new_config.set_cell(general_cell)
-    
+
     new_config.set_positions(new_positions)
-    
+
     new_config.wrap()
 
     return new_config
-        
-        
-#---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
 # Generating .dat files for different configurations.
 
 # generating different types of defects and supercells in the lammps .dat files.
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 
-def generate_supercell_dat(base_config_path: str, supercell_matrix: np.ndarray, atom_style: str='full'):
-    '''
+def generate_supercell_dat(
+    base_config_path: str, supercell_matrix: np.ndarray, atom_style: str = "full"
+):
+    """
     Given an initial .xyz file, generates a lammps dat for a supercell.
-    '''
+    """
     config = ase.io.read(base_config_path)
-    new_config = ase.build.make_supercell(config,supercell_matrix)
-    
-    if atom_style == 'full':
-        assert len(config.get_initial_charges()) != 0, 'To write lammps .dat with atom_style=full, input configuration must have initial charges'
-    
-    ase.io.lammpsdata.write_lammps_data(str(Path(base_config_path).with_suffix('')) + '_supercell.dat',new_config,atom_style=atom_style)
-    
+    new_config = ase.build.make_supercell(config, supercell_matrix)
+
+    if atom_style == "full":
+        assert (
+            len(config.get_initial_charges()) != 0
+        ), "To write lammps .dat with atom_style=full, input configuration must have initial charges"
+
+    ase.io.lammpsdata.write_lammps_data(
+        str(Path(base_config_path).with_suffix("")) + "_supercell.dat",
+        new_config,
+        atom_style=atom_style,
+    )
+
     return new_config
