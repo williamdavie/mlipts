@@ -5,6 +5,7 @@ File containing vasp specific functionality. Used to build many vasp calculation
 """
 
 import shutil
+import sys
 from itertools import product
 from pathlib import Path
 
@@ -86,6 +87,7 @@ def append_vasp_calc_to_database(
     save_magmoms: bool = True,
     save_charge: bool = True,
     store_failed: bool = True,
+    store_Uvalue: bool = True,
 ) -> None:
 
     # read atom data.
@@ -105,6 +107,9 @@ def append_vasp_calc_to_database(
     if save_charge:
         charges = fetch_OUTCAR_total_charge(f"{vasp_dir}/OUTCAR", len(atoms))
         atoms.set_array("total_charge", charges)
+    if store_Uvalue:
+        u_vals = fetch_OUTCAR_Uvalues(f"{vasp_dir}/OUTCAR", atoms)
+        atoms.set_array("Uvalue", u_vals)
 
     ase.io.write(database_file, atoms, format="extxyz", append=True)
     return None
@@ -151,6 +156,29 @@ def read_OUTCAR_atom_totals(outcar: str, label: str, atoms_count: int):
     return np.array(data)
 
 
+def fetch_OUTCAR_Uvalues(outcar: str, atoms: ase.Atoms):
+
+    # map chemical symbols to U value
+    map_ = dict.fromkeys(atoms.get_chemical_symbols())
+
+    with open(outcar, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+        for line in lines:
+            if "LDAUU" in line and "U (eV)" not in line:
+                line_list = line.split()
+                for i, symbol in enumerate(map_.keys()):
+
+                    value = float(line_list[-len(map_.keys()) + i])
+                    print(value)
+                    map_[symbol] = value
+
+    u_vals = []
+    for symbol in atoms.get_chemical_symbols():
+        u_vals.append(map_[symbol])
+
+    return np.array(u_vals)
+
+
 def fetch_configs_vasp(calc_dirs: list[str]) -> list[ase.Atoms]:
     """
     from a set of directories containing vasp in files, read configs.
@@ -169,9 +197,9 @@ def fetch_configs_vasp(calc_dirs: list[str]) -> list[ase.Atoms]:
 # -------------------set ICHARG across database------------------
 
 
-def set_icharg(value: int, vasp_calc_dir: str):
+def set_icharg(value: int, vasp_calc_dir_param: str):
 
-    with open(f"{vasp_calc_dir}/INCAR", "r", encoding="utf-8") as f:
+    with open(f"{vasp_calc_dir_param}/INCAR", "r", encoding="utf-8") as f:
         incar_lines = f.readlines()
     found = False
     for i, line in enumerate(incar_lines):
@@ -182,7 +210,7 @@ def set_icharg(value: int, vasp_calc_dir: str):
         incar_lines.append("\n")
         incar_lines.append(f"ICHARG = {value}\n")
 
-    with open(f"{vasp_calc_dir}/INCAR", "w", encoding="utf-8") as f:
+    with open(f"{vasp_calc_dir_param}/INCAR", "w", encoding="utf-8") as f:
         new_file_str = "".join(incar_lines)
         f.write(new_file_str)
 
@@ -191,7 +219,10 @@ def set_icharg(value: int, vasp_calc_dir: str):
 
 
 def set_magmom(
-    magmom_motif_config: ase.Atoms, vasp_calc_dirs: str = "./QM_calculations"
+    magmom_motif_config: ase.Atoms = None,
+    vasp_calc_dirs: str = "./QM_calculations",
+    atol: float = 1e-4,
+    magmom_motif_multi_samples: list[ase.Atoms] = None,
 ) -> None:
     """
     Given a set of vasp calculation directories, the supercell size, a motif and the magnet moments for the motif, POSCAR is used to set the MAGMOM string.
@@ -207,6 +238,8 @@ def set_magmom(
         motif of a relaxed solid structure.
     magmom_motif: :class:`np.ndarray`
         magnetic moments of the motif, order of magmom_motif must equal the order of motif. i.e. the magnetic moment of atom located at motif[i] is magmom_motif[i].
+    magmom_motif_multi_samples:
+        used to define a list of magnetic moment configs used in sampling.
 
     Returns
     -------
@@ -218,13 +251,20 @@ def set_magmom(
     subdirs = [p for p in path.iterdir() if p.is_dir()]
     for vasp_calc in subdirs:
         if haveINCAR(str(vasp_calc)) and havePOSCAR(str(vasp_calc)):
-            set_magmom_one_directory(magmom_motif_config, vasp_calc)
+            if magmom_motif_multi_samples:
+                # randomly select a magnetic order to sample
+                selection = np.random.choice(len(magmom_motif_multi_samples))
+                set_magmom_one_directory(
+                    magmom_motif_multi_samples[selection], str(vasp_calc), atol
+                )
+            else:
+                set_magmom_one_directory(magmom_motif_config, str(vasp_calc), atol)
 
     print(f"Magnetic Moments updated in all vasp sub directories of {vasp_calc_dirs}")
 
 
 def set_magmom_one_directory(
-    magmom_motif_config: ase.Atoms, vasp_calc_dir: str
+    magmom_motif_config: ase.Atoms, vasp_calc_dir_param: str, atol: float = 1e-4
 ) -> None:
     """
     Called on each directory by set_magmom
@@ -241,7 +281,7 @@ def set_magmom_one_directory(
             "magnetic moment motif input file must contain positions and initial moments."
         ) from exc
 
-    input_atoms = ase.io.read(f"{vasp_calc_dir}/POSCAR")
+    input_atoms = ase.io.read(f"{vasp_calc_dir_param}/POSCAR")
     cell = np.array(input_atoms.cell)
 
     # create a high symmetry configuration for an expanded cell
@@ -261,7 +301,7 @@ def set_magmom_one_directory(
 
     S = utils.get_supercell_matrix(cell, expanded_cell)
 
-    if np.allclose(S, np.round(S), atol=1e-4):
+    if np.allclose(S, np.round(S), atol=atol):
         supercell_magmom_motif = ase.build.make_supercell(
             expanded_magmom_motif_config, np.round(S)
         )
@@ -316,7 +356,7 @@ def set_magmom_one_directory(
         magmom_str += f"{mx} {my} {mz} "
 
     input_atoms.set_initial_magnetic_moments(magmoms)
-    writeMAGMOM(f"{vasp_calc_dir}/INCAR", new_magmom_str=magmom_str)
+    writeMAGMOM(f"{vasp_calc_dir_param}/INCAR", new_magmom_str=magmom_str)
 
 
 def writeMAGMOM(incar: str, new_magmom_str: str) -> None:
@@ -355,7 +395,7 @@ def set_kpoints(
 
 
 def set_kpoints_one_directory(
-    vasp_calc_dir: str, kspacing: float, grid_type: str = "Gamma"
+    vasp_calc_dir_param: str, kspacing: float, grid_type: str = "Gamma"
 ):
     """
 
@@ -363,9 +403,10 @@ def set_kpoints_one_directory(
 
     """
 
-    input_atoms = ase.io.read(f"{vasp_calc_dir}/POSCAR")
-    cell = np.array(input_atoms.cell)
-    rcp_lattice_vectors = reciprocal_lattice_vectors(cell)
+    input_atoms = ase.io.read(f"{vasp_calc_dir_param}/POSCAR")
+    rcp_lattice_vectors = (
+        input_atoms.get_reciprocal_cell() * 2 * np.pi
+    )  # reciprocal_lattice_vectors(cell)
 
     kpoints = np.zeros(3)
     for i in range(3):
@@ -374,7 +415,7 @@ def set_kpoints_one_directory(
             1, round(np.linalg.norm(rcp_lattice_vectors[i]) / (2 * np.pi * kspacing))
         )
 
-    with open(f"{vasp_calc_dir}/KPOINTS", "w", encoding="utf-8") as f:
+    with open(f"{vasp_calc_dir_param}/KPOINTS", "w", encoding="utf-8") as f:
 
         f.write(f"K-Spacing Value to Generate K-Mesh: {kspacing:.3f}\n")
         f.write("0\n")
@@ -398,6 +439,30 @@ def reciprocal_lattice_vectors(lattice_vectors: np.ndarray):
         )
 
     return rcp_lattice_vectors
+
+
+def set_Uvalue(vasp_calc_dir_param: str, u_vals_param: list[float]):
+
+    if haveINCAR(vasp_calc_dir_param):
+
+        with open(vasp_calc_dir_param + "/INCAR", "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        updated_lines = []
+        for line in lines:
+            if "LDAUU" in line:
+                new_str = (
+                    "LDAUU = " + " ".join([f"{i:.3f}" for i in u_vals_param]) + "\n"
+                )
+                updated_lines.append(new_str)
+            else:
+                updated_lines.append(line)
+
+        with open(vasp_calc_dir_param + "/INCAR", "w", encoding="utf-8") as f:
+            for line in updated_lines:
+                f.write(line)
+
+    else:
+        raise ValueError("Tried to write new U value but no INCAR found")
 
 
 # -------------------ANY INCAR PARAM for large databases------------------
@@ -430,3 +495,18 @@ def haveKPOINTS(directory: str):
     path = Path(directory)
     files = [str(p.name) for p in path.iterdir()]
     return "KPOINTS" in files
+
+
+if __name__ == "__main__":
+
+    vasp_calc_dir_arg = sys.argv[1]
+    option = sys.argv[2]
+
+    if option == "set_LDAUU":
+
+        num_params = len(sys.argv)
+        u_vals_arg = [float(sys.argv[i]) for i in range(3, num_params)]
+        set_Uvalue(vasp_calc_dir_arg, u_vals_arg)
+
+    else:
+        raise ValueError(f"No option to run vasp.py with {option}")
