@@ -328,7 +328,7 @@ def generate_schottky_defect(config: ase.Atoms, targets: dict[str, int]):
     return config
 
 
-def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximity: float=2):
+def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximity: float=6):
     """generate frenkel defect"""
 
     symbols = np.array(config.get_chemical_symbols(), dtype="U10")
@@ -340,13 +340,11 @@ def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximit
         interstitial_sites = find_interstitial_sites(config,count+(count*proximity))
         
         for i in range(count):
-            
             # finds the (n+1)th furtherest interstitual site using proximity parameter
-            atom_pos = config.positions[atom_indices[i]]
-            distances = scipy.spatial.cdist([atom_pos], interstitial_sites)[0]
-            sorted_indices = np.argsort(distances)[::-1]
-            idx = min(proximity, len(sorted_indices) - 1)
-            chosen_site = interstitial_sites[sorted_indices[idx]]
+            orig_pos = config.positions[atom_indices[i]].copy()
+            distances = scipy.spatial.distance.cdist([orig_pos], interstitial_sites)[0]
+            sorted_indices = np.argsort(distances)
+            chosen_site = interstitial_sites[sorted_indices[proximity]]
             config.positions[atom_indices[i]] = chosen_site
 
     return config
