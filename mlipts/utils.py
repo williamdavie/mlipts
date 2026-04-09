@@ -283,22 +283,22 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
 
 
 def generate_defect(
-    config: ase.Atoms, targets: dict[str, int], defect_type: str = "schottkey"
+    config: ase.Atoms, targets: dict[str, int], defect_type: str = "schottky"
 ) -> ase.Atoms:
     """
     Generates a config that contains a defect.
     """
 
-    if defect_type == "schottkey":
-        config = generate_schottkey_defect(config, targets)
+    if defect_type == "schottky":
+        config = generate_schottky_defect(config, targets)
     elif defect_type == "frenkel":
         config = generate_frenkel_defect(config, targets)
 
     return config
 
 
-def generate_schottkey_defect(config: ase.Atoms, targets: dict[str, int]):
-    """generate schottkey defect"""
+def generate_schottky_defect(config: ase.Atoms, targets: dict[str, int]):
+    """generate schottky defect"""
 
     # find smallest atom count (should have highest charge).
     minimum_count = min(targets.values())
@@ -328,7 +328,7 @@ def generate_schottkey_defect(config: ase.Atoms, targets: dict[str, int]):
     return config
 
 
-def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int]):
+def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximity: float=2):
     """generate frenkel defect"""
 
     symbols = np.array(config.get_chemical_symbols(), dtype="U10")
@@ -336,9 +336,18 @@ def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int]):
     for target_element in targets.keys():
         atom_indices = np.where(symbols == target_element)[0]
         count = targets[target_element]
-        interstitial_sites = find_interstitial_sites(config, count)
+        
+        interstitial_sites = find_interstitial_sites(config,count+(count*proximity))
+        
         for i in range(count):
-            config.positions[atom_indices[i]] = interstitial_sites[i]
+            
+            # finds the (n+1)th furtherest interstitual site using proximity parameter
+            atom_pos = config.positions[atom_indices[i]]
+            distances = scipy.spatial.cdist([atom_pos], interstitial_sites)[0]
+            sorted_indices = np.argsort(distances)[::-1]
+            idx = min(proximity, len(sorted_indices) - 1)
+            chosen_site = interstitial_sites[sorted_indices[idx]]
+            config.positions[atom_indices[i]] = chosen_site
 
     return config
 
