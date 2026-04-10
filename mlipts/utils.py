@@ -5,8 +5,10 @@ MLIPTS utilities.
 from itertools import product
 
 import ase
+import ase.neighborlist
 import numpy as np
 import scipy.spatial
+from prettytable import PrettyTable
 
 # ------------------------------Reference positions------------------------------------
 
@@ -283,22 +285,48 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
 
 
 def generate_defect(
-    config: ase.Atoms, targets: dict[str, int], defect_type: str = "schottky"
+    config: ase.Atoms,
+    targets: dict[str, int],
+    defect_type: str = "schottky",
+    order: int = 1,
 ) -> ase.Atoms:
     """
     Generates a config that contains a defect.
+
+    Parameters
+    ----------
+    order: int
+        for defect_type 'schottky' this gives nth order neighest neighbours of the highest charged element.
+        for defect_type 'frenkel' this gives the promixity of the involved atom and it's original initistitual pair.
     """
 
     if defect_type == "schottky":
-        config = generate_schottky_defect(config, targets)
+        config = generate_schottky_defect(config, targets, neighbour_order=order)
     elif defect_type == "frenkel":
-        config = generate_frenkel_defect(config, targets)
+        config = generate_frenkel_defect(config, targets, proximity=order)
 
     return config
 
 
-def generate_schottky_defect(config: ase.Atoms, targets: dict[str, int]):
-    """generate schottky defect"""
+def generate_schottky_defect(
+    config: ase.Atoms, targets: dict[str, int], neighbour_order: int
+):
+    """generate schottky defect
+
+    Parameters
+    ----------
+    config:
+        atomic configuration to generate defect in
+    targets: dict[str, int]
+        target elements to remove. For example for a 4+ cation (X) and 2- anion (A) pair the dict for a schottky defect would be {'X' : 1, 'A' : 2}.
+    neighbour_order: int
+        the number of unit cells seperating the highest charge element and the rest of the defect.
+
+    Returns
+    -------
+    config:
+        atoms with defect removed.
+    """
 
     # find smallest atom count (should have highest charge).
     minimum_count = min(targets.values())
@@ -310,25 +338,31 @@ def generate_schottky_defect(config: ase.Atoms, targets: dict[str, int]):
     old_config = config.copy()
     symbols = np.array(config.get_chemical_symbols(), dtype="U10")
     removed_largest = []
+    removed = []
     min_key_indices = np.where(symbols == minimum_key)[0]
     for idx in min_key_indices[:minimum_count]:
-
-        del config[idx]
         removed_largest.append(idx)
+        removed.append(idx)
 
     # remove nearest neighbours of highest charge element.
     surrounding_elements = [key for key in targets if targets[key] != minimum_count]
     for j in surrounding_elements:
         to_remove = find_nearest_neighbours(
-            old_config, removed_largest, Nneighbours=targets[j], target_element=j
+            old_config,
+            removed_largest,
+            Nneighbours=targets[j],
+            target_element=j,
+            order=neighbour_order,
         )
-        for k in to_remove:
-            del config[k]
+        removed.extend(to_remove)
+
+    for idx in sorted(removed, reverse=True):
+        del config[idx]
 
     return config
 
 
-def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximity: float=6):
+def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximity: int):
     """generate frenkel defect"""
 
     symbols = np.array(config.get_chemical_symbols(), dtype="U10")
@@ -336,16 +370,31 @@ def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximit
     for target_element in targets.keys():
         atom_indices = np.where(symbols == target_element)[0]
         count = targets[target_element]
-        
-        interstitial_sites = find_interstitial_sites(config,count+(count*proximity))
-        
+
+        # this sets a preference for the 'largest availible' interstitial.
+        interstitial_sites = find_interstitial_sites(
+            config, count + (count * proximity)
+        )
+
         for i in range(count):
             # finds the (n+1)th furtherest interstitual site using proximity parameter
             orig_pos = config.positions[atom_indices[i]].copy()
             distances = scipy.spatial.distance.cdist([orig_pos], interstitial_sites)[0]
             sorted_indices = np.argsort(distances)
-            chosen_site = interstitial_sites[sorted_indices[proximity]]
-            config.positions[atom_indices[i]] = chosen_site
+            sorted_dists = distances[sorted_indices]
+
+            norm_dists = np.round(sorted_dists / np.min(sorted_dists), 1)
+            unique_norm = np.unique(norm_dists)
+
+            if proximity <= len(unique_norm):
+                shell_mask = norm_dists == unique_norm[proximity - 1]
+                result_indices = sorted_indices[shell_mask]
+                chosen_site = interstitial_sites[result_indices[0]]
+                config.positions[atom_indices[i]] = chosen_site
+            else:
+                raise ValueError(
+                    f"Cannot place atom pair that far, change current proximity (order) of the defect: {proximity}."
+                )
 
     return config
 
@@ -355,26 +404,61 @@ def find_nearest_neighbours(
     central_atoms: list[int],
     Nneighbours: int,
     target_element: str = "O",
+    order: int = 1,  # 1 - nearest neighbour, 2 - next neighest neighbour etc
 ):
-    """Finds nearest N neighbours of central_atoms (indicies of the config.)"""
+    """Finds nearest N (nth order) neighbours of central_atoms (indicies of the config.)"""
+
+    i, j, d = ase.neighborlist.neighbor_list("ijd", config, cutoff=np.max(config.cell))
 
     symbols = np.array(config.get_chemical_symbols(), dtype="U10")
-    atom_indices = np.where(symbols == target_element)[0]
+    is_target = symbols[j] == target_element
 
-    atom_positions = config.get_positions()[atom_indices]
+    for atom in central_atoms:
+        is_central = i == atom
+        mask = is_central & is_target
+        neighbor_indices = j[mask]
+        neighbor_distances = d[mask]
 
-    original_indices = []
-    distances = []
-    for i in central_atoms:
-        target_position = config.positions[i]
-        distances.extend(np.linalg.norm(atom_positions - target_position, axis=1))
-        original_indices.extend(list(range(len(atom_positions))))
+        if len(neighbor_distances) == 0:
+            raise ValueError("No neighbours of this target  element found")
 
-    min_distances = np.array(original_indices)[np.argsort(distances)]
+        ordered_idx = np.argsort(neighbor_distances)
+        sorted_indices = neighbor_indices[ordered_idx]
+        sorted_dists = neighbor_distances[ordered_idx]
 
-    atom_indices = atom_indices[min_distances]
+        norm_dists = np.round(sorted_dists / np.min(sorted_dists), 1)
+        unique_norm = np.unique(norm_dists)
 
-    return atom_indices[0:Nneighbours]
+        if order <= len(unique_norm):
+            shell_mask = norm_dists == unique_norm[order - 1]
+            result_indices = sorted_indices[shell_mask]
+        else:
+            raise ValueError(
+                f"Cannot find the {order}th nearest neighbors in this supercell."
+            )
+
+    print(result_indices)
+    return result_indices[0:Nneighbours]
+
+
+def insert_cluster_to_interstitual(config: ase.Atoms, cluster: ase.Atoms):
+    """Centres a cluster at an intersititial_site"""
+
+    interstitial_site = find_interstitial_sites(config, 1)
+
+    # find cluster centre,
+    cluster_positions = cluster.get_positions()
+    centroid = np.mean(cluster_positions, axis=0)
+    centered_positions = cluster_positions - centroid
+    # normalize positions around that centre
+    centered_positions = cluster_positions - centroid
+    # place the cluster at initerstitial site
+    new_positions = centered_positions + interstitial_site
+    for i, atom in enumerate(cluster):
+        new_atom = ase.Atom(symbol=atom.symbol, position=new_positions[i])
+        config.append(new_atom)
+
+    return config
 
 
 def insert_element_to_interstitial(config: ase.Atoms, element: str, count: int = 1):
@@ -408,3 +492,63 @@ def find_interstitial_sites(atoms: ase.Atoms, count: int, grid_density: int = 10
     best_sites = grid_points_cart[best_indices[0:count]]
 
     return best_sites
+
+
+# -------------- Analyse a training data set ----------------------
+
+
+def configuration_distribution_table(atoms: list[ase.Atoms]):
+    """Given a set of atoms returns a table showing total number of configs for each number of atoms
+    i.e.:
+
+    N atoms : N configs
+    24 : 1000
+    48 : 500
+    """
+    Natoms = np.array([atom.get_number_of_atoms() for atom in atoms], dtype=np.int64)
+
+    unique_Natoms, totals = np.unique(Natoms, return_counts=True)
+
+    table = PrettyTable()
+
+    table.field_names = ["N atoms", "Total configurations"]
+
+    for i, count in enumerate(unique_Natoms):
+        table.add_row([f"{count}", f"{totals[i]}"])
+
+    return table
+
+
+def supercell_distribution_table(atoms: list[ase.Atoms], minimal_atoms: ase.Atoms):
+    """Given a set of atoms returns a table showing total number of configs for each supercell"""
+
+    supercells = np.array(
+        [
+            np.round(get_supercell_matrix(atom.cell, minimal_atoms.cell)).astype(
+                np.int32
+            )
+            for atom in atoms
+        ]
+    )
+
+    unique_flat = np.unique(supercells.reshape(supercells.shape[0], -1), axis=0)
+    unique_supercells = unique_flat.reshape(-1, 3, 3)
+
+    _, counts = np.unique(
+        supercells.reshape(supercells.shape[0], -1), axis=0, return_counts=True
+    )
+
+    table = PrettyTable()
+
+    table.field_names = ["Super cell", "Total configurations", "Det"]
+
+    for i, supercell in enumerate(unique_supercells):
+        table.add_row(
+            [
+                f"{tuple(map(tuple, supercell))}",
+                f"{counts[i]}",
+                f"{np.linalg.det(supercell)}",
+            ]
+        )
+
+    return table
