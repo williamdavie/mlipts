@@ -1,26 +1,28 @@
-'''
+"""
 group atomic positions according to similarity criteria.
-'''
+"""
 
+import ase
 import numpy as np
-from mlipts.codes.vasp import fetch_configs_vasp,build_vasp_calculation
-from mlipts import utils
-from ase.atoms import Atoms
-import ase.build
-from itertools import product
-from ase.io import read,write
-from mlipts.similarity.pdd import PDD
-from mlipts.similarity.emd import EMD, cached_EMD
-from mlipts.utils import sort_configs_by_volume
 
-def smart_group_calcs(calc_dirs: list[str], 
-                      ngroups: int, 
-                      calc_code: str='vasp', group_by: str='emd',
-                      equilibrium_config: Atoms=None,
-                      pilot_calculations: bool=True) -> tuple[list[str]]:
-    ''' 
+from mlipts import utils
+from mlipts.codes.vasp import fetch_configs_vasp
+from mlipts.similarity.emd import EMD, cached_EMD
+from mlipts.similarity.pdd import PDD
+from mlipts.utils import map_properties
+
+
+def smart_group_calcs(
+    calc_dirs: list[str],
+    ngroups: int,
+    calc_code: str = "vasp",
+    group_by: str = "emd",
+    equilibrium_config: ase.Atoms = None,
+    pilot_calculations: bool = True,
+) -> tuple[list[str]]:
+    """
     Given a set of calculation paths (calc_dirs), group to maximise calculation convergence when batched to a supercomputer.
-    
+
     Parameters
     ----------
     calc_dirs: list[str]
@@ -32,104 +34,155 @@ def smart_group_calcs(calc_dirs: list[str],
     calc_code: str
         code used to perform QM calculations. Default is vasp
     group_by:
-        method to measure similarity between configurations and perform grouping. 
-        
+        method to measure similarity between configurations and perform grouping.
+
     Returns
     -------
     calc_dirs_grouped: list[str]
         list of paths, ordered so they are grouped by size of the partioning
     calc_dirs_init: list[str]
         a list of paths corrosponding to the starting configurations.
-    '''
-    
-    print('---------------------------------------------------------------------------')
-    print('Beginning to sort configs for smart convergence. This process can be costly')
-    print('---------------------------------------------------------------------------')
+    """
 
-    if calc_code == 'vasp':
+    print("---------------------------------------------------------------------------")
+    print("Beginning to sort configs for smart convergence. This process can be costly")
+    print("---------------------------------------------------------------------------")
+
+    if calc_code == "vasp":
         configs = fetch_configs_vasp(calc_dirs)
     else:
-        raise ValueError(f'Calculation code {calc_code} not supported in smart grouping. ')
-    if group_by == 'emd':
-        k = int(input('Input number of neighbours (k) used for earth movers distance: '))
-        print('---------------------------------------------------------------------------')
-        group_indicies, pilot_calculation_configs = smart_group_by_emd(configs,ngroups,k,equilibrium_config,pilot_calculations=pilot_calculations)
+        raise ValueError(
+            f"Calculation code {calc_code} not supported in smart grouping. "
+        )
+    if group_by == "emd":
+        k = int(
+            input("Input number of neighbours (k) used for earth movers distance: ")
+        )
+        print(
+            "---------------------------------------------------------------------------"
+        )
+        group_indicies, pilot_calculation_configs = smart_group_by_emd(
+            configs,
+            ngroups,
+            k,
+            equilibrium_config,
+            pilot_calculations=pilot_calculations,
+        )
     else:
-        raise ValueError(f'similarity assessment statergy (group_by) {group_by} not regonised')
+        raise ValueError(
+            f"similarity assessment statergy (group_by) {group_by} not regonised"
+        )
 
     return group_indicies, pilot_calculation_configs
-    #return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
+    # return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
 
 
-def smart_group_by_emd(configs: list[Atoms], ngroups: int, k: int, equilibrium_config: Atoms, pilot_calculations: bool=True):
-    '''
-    Given an expected motif sort configurations into n groups to maximise convergence. 
-    '''
-    
+def smart_group_by_emd(
+    configs: list[ase.Atoms],
+    ngroups: int,
+    k: int,
+    equilibrium_config: ase.Atoms,
+    pilot_calculations: bool = True,
+    supercell_atol: float = 1e-4,
+):
+    """
+    Given an expected motif sort configurations into n groups to maximise convergence.
+    """
+
     pilot_calculation_configs = None
 
-    group_size = len(configs)/ngroups
-    indicies = np.zeros((ngroups,int(len(configs)/ngroups)),dtype=np.int16)
-    counts = np.zeros(ngroups,dtype=np.int16)
-    available_mask = np.ones(len(configs), dtype=bool) #mask used configs.
+    group_size = len(configs) / ngroups
+    indicies = np.zeros((ngroups, int(len(configs) / ngroups)), dtype=np.int16)
+    counts = np.zeros(ngroups, dtype=np.int16)
+    available_mask = np.ones(len(configs), dtype=bool)  # mask used configs.
     all_pdds = [PDD(c.positions, c.cell, k) for c in configs]
     emd_cache = {}
     # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
-    for i,config in enumerate(configs):
-        motif_config = utils.return_motif_config(config,equilibrium_config)
+    for i, config in enumerate(configs):
+        motif_config = utils.return_motif_config(config, equilibrium_config)
         PDD1 = all_pdds[i]
-        PDD2 = PDD(motif_config.positions,motif_config.cell,k)
-        init_emds[i] = EMD(PDD1,PDD2) 
-        
-    end_points = np.argpartition(init_emds, ngroups-1)[:ngroups]
-    if pilot_calculations==True:
-        pilot_calculation_configs = [utils.return_motif_config(configs[i],equilibrium_config) for i in end_points]
+        PDD2 = PDD(motif_config.positions, motif_config.cell, k)
+        init_emds[i] = EMD(PDD1, PDD2)
+
+    end_points = np.argpartition(init_emds, ngroups - 1)[:ngroups]
+    if pilot_calculations is True:
+        pilot_calculation_configs = [
+            utils.return_motif_config(
+                configs[i], equilibrium_config, atol=supercell_atol
+            )
+            for i in end_points
+        ]
     available_mask[end_points] = False
     seen_configs = [configs[i] for i in end_points]
-    indicies[:,0] = end_points
+    indicies[:, 0] = end_points
     cell_norm = fetch_cell_norm_diff(configs)
     # iterative expansion of groups by greedy clustering
-    while np.any(counts < group_size-1):
-        progress = np.sum(counts+1)/len(configs) * 100
+    while np.any(counts < group_size - 1):
+        progress = np.sum(counts + 1) / len(configs) * 100
         print(f"\rProgress: {(round(progress,1))}%", end="")
         config_to_append = 0
         config_to_push_back = 0
-        min_score = 1 # max value of the emd.
-        for i,config in enumerate(configs):
+        min_score = 1  # max value of the emd.
+        for i, config in enumerate(configs):
             if not available_mask[i]:
                 continue
-            for j,end_index in enumerate(end_points):
-                if counts[j] != (group_size-1): 
-                    emd = cached_EMD(i,end_index,all_pdds,emd_cache)
-                    cell_diff_score = np.linalg.norm(configs[i].cell - configs[end_index].cell) / cell_norm
+            for j, end_index in enumerate(end_points):
+                if counts[j] != (group_size - 1):
+                    emd = cached_EMD(i, end_index, all_pdds, emd_cache)
+                    cell_diff_score = (
+                        np.linalg.norm(config.cell - configs[end_index].cell)
+                        / cell_norm
+                    )
                     score = 0.9 * cell_diff_score + 0.1 * emd
                     if score <= min_score:
                         min_score = score
                         config_to_append = i
                         config_to_push_back = j
-                    
+
         # update
         end_points[config_to_push_back] = config_to_append
         available_mask[config_to_append] = False
-        seen_configs.append(configs[config_to_append])     
+        seen_configs.append(configs[config_to_append])
         counts[config_to_push_back] += 1
         indicies[config_to_push_back][counts[config_to_push_back]] = config_to_append
-    
-    print('\nSorting Done')
-    print('---------------------------------------------------------------------------')
-    
+
+    print("\nSorting Done")
+    print("---------------------------------------------------------------------------")
+
     return indicies, pilot_calculation_configs
 
-    
-def fetch_cell_norm_diff(configs: list[Atoms]):
-    
+
+def assign_properties_to_group(
+    configs: list[ase.Atoms], ideal_configs: list[ase.Atoms]
+):
+    """
+    Given a group of atoms objects of size N, assign an array or info to each member of the group.
+
+    Parameters
+    ----------
+    configs: ase.Atoms
+
+    ideal_configs: ase.Atoms
+        a set of configurations that have more properties than original configs, the properties of these configs are mapped onto the configs.
+    """
+
+    assert len(ideal_configs) == len(configs)
+
+    updated_configs = []
+    for i, atoms in enumerate(configs):
+        # maps properties of B to A.
+        updated_atoms = map_properties(atoms.copy(), ideal_configs[i])
+        updated_configs.append(updated_atoms)
+
+    return updated_configs
+
+
+def fetch_cell_norm_diff(configs: list[ase.Atoms]):
+
     diffs = []
     for i in configs:
         for j in configs:
             diffs.append(np.linalg.norm(i.cell - j.cell))
-            
+
     return max(diffs)
-
-
-    

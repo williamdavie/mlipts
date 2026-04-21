@@ -5,6 +5,7 @@ MLIPTS utilities.
 from itertools import product
 
 import ase
+import ase.build
 import ase.neighborlist
 import numpy as np
 import scipy.spatial
@@ -231,7 +232,9 @@ def vectors_angle(vec1, vec2):
     return np.arccos(cosAngle)
 
 
-def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase.Atoms:
+def return_motif_config(
+    config: ase.Atoms, equilibrium_config: ase.Atoms, atol: float = 1e-4
+) -> ase.Atoms:
     """
     Some positions may be wrapped to larger cell sizes.
     """
@@ -255,7 +258,7 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
 
     S = get_supercell_matrix(cell, expanded_cell)
 
-    if np.allclose(S, np.round(S), atol=1e-4):
+    if np.allclose(S, np.round(S), atol=atol):
         supercell_motif = ase.build.make_supercell(expanded_config, np.round(S))
     else:
         raise ValueError(
@@ -279,6 +282,88 @@ def return_motif_config(config: ase.Atoms, equilibrium_config: ase.Atoms) -> ase
     motif_config.set_positions(positions_new)
 
     return motif_config
+
+
+def map_properties(
+    configA: ase.Atoms, configB: ase.Atoms, supercell_atol: float = 1e-4
+):
+    """
+    maps the features of configB to configA independant of supercell.
+
+    Only copies across features that aren't present in configB.
+
+    Again we have lots of parallels between this function, return_motif_config and codes.vasp.set_magmom).
+    """
+    # configB is the expected minimal cell, it may be the same size as B.
+
+    configA.wrap()
+
+    minimal_cell = np.array(configB.cell)
+
+    cell = np.array(configA.cell)
+
+    try:
+        configB_scaled_pos = configB.get_scaled_positions()
+    except Exception as exc:
+        raise ValueError("config A must contain positions") from exc
+
+    scaling_factor = round(np.linalg.det(cell) / np.linalg.det(minimal_cell))
+    volume_scaling_factor = (np.linalg.det(cell) / scaling_factor) / np.linalg.det(
+        minimal_cell
+    )
+    expanded_cell = (volume_scaling_factor) ** (1 / 3) * minimal_cell
+
+    # scale up the positions, all other properties i.e. magnetic moment remain the same.
+    expanded_configB = configB.copy()
+    expanded_configB.set_cell(expanded_cell)
+    expanded_configB.set_scaled_positions(configB_scaled_pos)
+
+    # now expand this cell to the input supercell.
+    S = get_supercell_matrix(cell, expanded_cell)
+
+    if np.allclose(S, np.round(S), atol=supercell_atol):
+        supercell_configB = ase.build.make_supercell(expanded_configB, np.round(S))
+    else:
+        raise ValueError(
+            "cannot copy data across configurations with non-interger supercell matricies, maybe need to use a conversion before using as input data."
+        )
+
+    supercell_configB.wrap()
+
+    # retrieve desired arrays:
+    B_arrays = {}
+    final_arrays = {}
+    for Bkey, B_property in supercell_configB.arrays.items():
+        if Bkey not in configA.arrays.keys():
+            if isinstance(B_property, np.ndarray):
+                shape = (len(configA),) + B_property.shape[1:]
+                final_arrays[Bkey] = np.zeros(shape)
+            else:
+                final_arrays[Bkey] = np.zeros(len(configA))
+
+    # Now match arrays according to minimum distance and element.
+    A = configA.positions
+    B = configB.positions
+    all_diff = B[None, :, :] - A[:, None, :]
+    all_dist2 = np.sum(all_diff**2, axis=2)
+
+    for i, atom in enumerate(configA):
+        symbol = atom.symbol
+        element_indices = [
+            index for index, val in enumerate(configB.symbols) if val == symbol
+        ]
+        B_this_element = B[np.array(element_indices), :]
+        diff = B_this_element - A[i]
+        dist2 = np.sum(diff**2, axis=1)
+        closest_index = np.argmin(dist2)
+        true_index = np.where(dist2[closest_index] == all_dist2)[1][0]
+        for key, final_property in final_arrays.items():
+            final_property[i] = B_arrays[key][true_index]
+
+    for key, final_property in final_arrays.items():
+        configA.arrays[key] = final_property
+
+    return configA
 
 
 # -------------------------------Defects---------------------------------------------
