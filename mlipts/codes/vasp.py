@@ -46,6 +46,27 @@ def build_vasp_calculation(
         new_calc_dir + "/POSCAR", config, format="vasp", vasp5=True, direct=True
     )
 
+    # set magnetic moment
+    if "magnetic_moment" in config.arrays.keys():
+        print("Found magnetic moment in input file, now setting MAGMOM")
+        magmom_str = "MAGMOM = "
+        for momoment in config.arrays["magnetic_moment"]:
+            magmom_str += f"{momoment[0]} {momoment[1]} {momoment[2]} "
+
+        writeMAGMOM(f"{new_calc_dir}/INCAR", new_magmom_str=magmom_str)
+
+    if "Uvalue" in config.arrays.keys():
+        print("Found Uvalue in input file, now setting LDAUU")
+        symbols = config.get_chemical_symbols()
+        map_ = dict.fromkeys(symbols)
+
+        for i, value in enumerate(config.arrays["Uvalue"]):
+            map_[symbols[i]] = value
+
+        Uvalues = [value for key, value in map_.items()]
+
+        set_Uvalue(new_calc_dir, Uvalues)
+
     return new_calc_dir
 
 
