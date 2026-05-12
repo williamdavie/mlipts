@@ -19,6 +19,7 @@ def smart_group_calcs(
     group_by: str = "emd",
     equilibrium_config: ase.Atoms = None,
     pilot_calculations: bool = True,
+    supercell_atol: float = 1e-4,
 ) -> tuple[list[str]]:
     """
     Given a set of calculation paths (calc_dirs), group to maximise calculation convergence when batched to a supercomputer.
@@ -67,6 +68,7 @@ def smart_group_calcs(
             k,
             equilibrium_config,
             pilot_calculations=pilot_calculations,
+            supercell_atol=supercell_atol,
         )
     else:
         raise ValueError(
@@ -100,7 +102,9 @@ def smart_group_by_emd(
     # first find the starting point for each group, based on how close to ideal symmetry.
     init_emds = np.zeros((len(configs)))
     for i, config in enumerate(configs):
-        motif_config = utils.return_motif_config(config, equilibrium_config)
+        motif_config = utils.return_motif_config(
+            config, equilibrium_config, atol=supercell_atol
+        )
         PDD1 = all_pdds[i]
         PDD2 = PDD(motif_config.positions, motif_config.cell, k)
         init_emds[i] = EMD(PDD1, PDD2)
@@ -154,7 +158,9 @@ def smart_group_by_emd(
 
 
 def assign_properties_to_group(
-    configs: list[ase.Atoms], ideal_configs: list[ase.Atoms]
+    configs: list[ase.Atoms],
+    ideal_configs: list[ase.Atoms],
+    supercell_atol: float = 1e-4,
 ):
     """
     Given a group of atoms objects of size N, assign an array or info to each member of the group.
@@ -172,7 +178,7 @@ def assign_properties_to_group(
     updated_configs = []
     for i, atoms in enumerate(configs):
         # maps properties of B to A.
-        updated_atoms = map_properties(atoms.copy(), ideal_configs[i])
+        updated_atoms = map_properties(atoms.copy(), ideal_configs[i], supercell_atol)
         updated_configs.append(updated_atoms)
 
     return updated_configs
@@ -180,9 +186,8 @@ def assign_properties_to_group(
 
 def fetch_cell_norm_diff(configs: list[ase.Atoms]):
 
-    diffs = []
-    for i in configs:
-        for j in configs:
-            diffs.append(np.linalg.norm(i.cell - j.cell))
+    cells = np.array([c.cell.array for c in configs])  # Shape (N, 3, 3)
+    diff_matrix = cells[:, np.newaxis, :, :] - cells[np.newaxis, :, :, :]
+    dist_matrix = np.linalg.norm(diff_matrix, axis=(2, 3))
 
-    return max(diffs)
+    return np.max(dist_matrix)

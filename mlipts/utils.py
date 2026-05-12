@@ -331,7 +331,6 @@ def map_properties(
     supercell_configB.wrap()
 
     # retrieve desired arrays:
-    B_arrays = {}
     final_arrays = {}
     for Bkey, B_property in supercell_configB.arrays.items():
         if Bkey not in configA.arrays.keys():
@@ -352,13 +351,16 @@ def map_properties(
         element_indices = [
             index for index, val in enumerate(configB.symbols) if val == symbol
         ]
+        if not element_indices:
+            raise ValueError("reference configuration has missing elements. ")
+
         B_this_element = B[np.array(element_indices), :]
         diff = B_this_element - A[i]
         dist2 = np.sum(diff**2, axis=1)
         closest_index = np.argmin(dist2)
         true_index = np.where(dist2[closest_index] == all_dist2)[1][0]
         for key, final_property in final_arrays.items():
-            final_property[i] = B_arrays[key][true_index]
+            final_property[i] = supercell_configB.arrays[key][true_index]
 
     for key, final_property in final_arrays.items():
         configA.arrays[key] = final_property
