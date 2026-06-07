@@ -9,7 +9,6 @@ import ase.build
 import ase.neighborlist
 import numpy as np
 import scipy.spatial
-from prettytable import PrettyTable
 
 # ------------------------------Reference positions------------------------------------
 
@@ -386,7 +385,7 @@ def generate_defect(
         for defect_type 'schottky' this gives nth order neighest neighbours of the highest charged element.
         for defect_type 'frenkel' this gives the promixity of the involved atom and it's original initistitual pair.
     """
-
+    config.wrap()
     if defect_type == "schottky":
         config = generate_schottky_defect(config, targets, neighbour_order=order)
     elif defect_type == "frenkel":
@@ -460,7 +459,8 @@ def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximit
 
         # this sets a preference for the 'largest availible' interstitial.
         interstitial_sites = find_interstitial_sites(
-            config, count + (count * proximity)
+            config,
+            count + (count * proximity),
         )
 
         for i in range(count):
@@ -468,20 +468,8 @@ def generate_frenkel_defect(config: ase.Atoms, targets: dict[str, int], proximit
             orig_pos = config.positions[atom_indices[i]].copy()
             distances = scipy.spatial.distance.cdist([orig_pos], interstitial_sites)[0]
             sorted_indices = np.argsort(distances)
-            sorted_dists = distances[sorted_indices]
-
-            norm_dists = np.round(sorted_dists / np.min(sorted_dists), 1)
-            unique_norm = np.unique(norm_dists)
-
-            if proximity <= len(unique_norm):
-                shell_mask = norm_dists == unique_norm[proximity - 1]
-                result_indices = sorted_indices[shell_mask]
-                chosen_site = interstitial_sites[result_indices[0]]
-                config.positions[atom_indices[i]] = chosen_site
-            else:
-                raise ValueError(
-                    f"Cannot place atom pair that far, change current proximity (order) of the defect: {proximity}."
-                )
+            print(f"chosen site: {interstitial_sites[sorted_indices][-1]}")
+            config.positions[atom_indices[i]] = interstitial_sites[sorted_indices][-1]
 
     return config
 
@@ -524,14 +512,13 @@ def find_nearest_neighbours(
                 f"Cannot find the {order}th nearest neighbors in this supercell."
             )
 
-    print(result_indices)
     return result_indices[0:Nneighbours]
 
 
 def insert_cluster_to_interstitual(config: ase.Atoms, cluster: ase.Atoms):
     """Centres a cluster at an intersititial_site"""
 
-    interstitial_site = find_interstitial_sites(config, 1)
+    interstitial_site = find_interstitial_sites(config, 1, len(config))
 
     # find cluster centre,
     cluster_positions = cluster.get_positions()
@@ -560,82 +547,26 @@ def insert_element_to_interstitial(config: ase.Atoms, element: str, count: int =
     return config
 
 
-def find_interstitial_sites(atoms: ase.Atoms, count: int, grid_density: int = 10):
+def find_interstitial_sites(atoms: ase.Atoms, count: int, grid_density: int = 50):
     """Basic function to find an interstitial site."""
 
     pos = atoms.get_positions()
     cell = atoms.get_cell()
 
-    x = np.linspace(0, 0.5, grid_density)
+    x = np.linspace(0, 1, grid_density, endpoint=False)
     grid_points_frac = np.array(np.meshgrid(x, x, x)).T.reshape(-1, 3)
     grid_points_cart = np.dot(grid_points_frac, cell)
 
-    tree = scipy.spatial.KDTree(pos)
+    shifts = np.array(np.meshgrid([-1, 0, 1], [-1, 0, 1], [-1, 0, 1])).T.reshape(-1, 3)
+    cart_shifts = np.dot(shifts, cell)
+    expanded_pos = np.vstack([pos + shift for shift in cart_shifts])
 
+    tree = scipy.spatial.KDTree(expanded_pos)
     distances, _ = tree.query(grid_points_cart)
 
     best_indices = np.argsort(distances)[::-1]
-
     best_sites = grid_points_cart[best_indices[0:count]]
 
+    print(f"Found interstitual sites: {best_sites}")
+
     return best_sites
-
-
-# -------------- Analyse a training data set ----------------------
-
-
-def configuration_distribution_table(atoms: list[ase.Atoms]):
-    """Given a set of atoms returns a table showing total number of configs for each number of atoms
-    i.e.:
-
-    N atoms : N configs
-    24 : 1000
-    48 : 500
-    """
-    Natoms = np.array([atom.get_number_of_atoms() for atom in atoms], dtype=np.int64)
-
-    unique_Natoms, totals = np.unique(Natoms, return_counts=True)
-
-    table = PrettyTable()
-
-    table.field_names = ["N atoms", "Total configurations"]
-
-    for i, count in enumerate(unique_Natoms):
-        table.add_row([f"{count}", f"{totals[i]}"])
-
-    return table
-
-
-def supercell_distribution_table(atoms: list[ase.Atoms], minimal_atoms: ase.Atoms):
-    """Given a set of atoms returns a table showing total number of configs for each supercell"""
-
-    supercells = np.array(
-        [
-            np.round(get_supercell_matrix(atom.cell, minimal_atoms.cell)).astype(
-                np.int32
-            )
-            for atom in atoms
-        ]
-    )
-
-    unique_flat = np.unique(supercells.reshape(supercells.shape[0], -1), axis=0)
-    unique_supercells = unique_flat.reshape(-1, 3, 3)
-
-    _, counts = np.unique(
-        supercells.reshape(supercells.shape[0], -1), axis=0, return_counts=True
-    )
-
-    table = PrettyTable()
-
-    table.field_names = ["Super cell", "Total configurations", "Det"]
-
-    for i, supercell in enumerate(unique_supercells):
-        table.add_row(
-            [
-                f"{tuple(map(tuple, supercell))}",
-                f"{counts[i]}",
-                f"{np.linalg.det(supercell)}",
-            ]
-        )
-
-    return table
