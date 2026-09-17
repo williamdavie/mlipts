@@ -79,7 +79,7 @@ def smart_group_calcs(
     # return [calc_dirs[i] for sublist in group_indicies for i in sublist], [calc_dirs[i] for i in group_indicies[:,0]]
 
 
-def smart_group_by_emd(
+def smart_group_by_emd_old(
     configs: list[ase.Atoms],
     ngroups: int,
     k: int,
@@ -132,7 +132,7 @@ def smart_group_by_emd(
             if not available_mask[i]:
                 continue
             for j, end_index in enumerate(end_points):
-                if counts[j] != (group_size - 1):
+                if counts[j] < (group_size - 1):
                     emd = cached_EMD(i, end_index, all_pdds, emd_cache)
                     cell_diff_score = (
                         np.linalg.norm(config.cell - configs[end_index].cell)
@@ -143,6 +143,107 @@ def smart_group_by_emd(
                         min_score = score
                         config_to_append = i
                         config_to_push_back = j
+
+        # update
+        end_points[config_to_push_back] = config_to_append
+        available_mask[config_to_append] = False
+        seen_configs.append(configs[config_to_append])
+        counts[config_to_push_back] += 1
+        indicies[config_to_push_back][counts[config_to_push_back]] = config_to_append
+
+    print("\nSorting Done")
+    print("---------------------------------------------------------------------------")
+
+    return indicies, pilot_calculation_configs
+
+
+def smart_group_by_emd(
+    configs: list,
+    ngroups: int,
+    k: int,
+    equilibrium_config,
+    pilot_calculations: bool = True,
+    supercell_atol: float = 1e-4,
+):
+    """
+    Given an expected motif sort configurations into n groups to maximise convergence.
+    """
+    # ^ replace this import line with however these are actually imported in
+    # data_collection.py / group.py — left explicit here just so this file is
+    # self-documenting about what it depends on.
+
+    pilot_calculation_configs = None
+    n_configs = len(configs)
+
+    # --- FIX: integer per-group capacities, remainder distributed instead of dropped ---
+    base_size, remainder = divmod(n_configs, ngroups)
+    group_capacity = np.array(
+        [base_size + 1 if i < remainder else base_size for i in range(ngroups)],
+        dtype=np.int32,
+    )
+    max_capacity = int(group_capacity.max())
+
+    # use -1 as a "no config here" sentinel for groups smaller than max_capacity
+    indicies = np.full((ngroups, max_capacity), -1, dtype=np.int32)
+    counts = np.zeros(ngroups, dtype=np.int32)
+    available_mask = np.ones(n_configs, dtype=bool)  # mask used configs.
+    all_pdds = [PDD(c.positions, c.cell, k) for c in configs]
+    emd_cache = {}
+
+    # first find the starting point for each group, based on how close to ideal symmetry.
+    init_emds = np.zeros((n_configs))
+    for i, config in enumerate(configs):
+        motif_config = utils.return_motif_config(
+            config, equilibrium_config, atol=supercell_atol
+        )
+        PDD1 = all_pdds[i]
+        PDD2 = PDD(motif_config.positions, motif_config.cell, k)
+        init_emds[i] = EMD(PDD1, PDD2)
+
+    end_points = np.argpartition(init_emds, ngroups - 1)[:ngroups]
+    if pilot_calculations is True:
+        pilot_calculation_configs = [
+            utils.return_motif_config(
+                configs[i], equilibrium_config, atol=supercell_atol
+            )
+            for i in end_points
+        ]
+    available_mask[end_points] = False
+    seen_configs = [configs[i] for i in end_points]
+    indicies[:, 0] = end_points
+    cell_norm = fetch_cell_norm_diff(configs)
+
+    # iterative expansion of groups by greedy clustering
+    while np.any(counts < group_capacity - 1):
+        progress = np.sum(counts + 1) / n_configs * 100
+        print(f"\rProgress: {(round(progress, 1))}%", end="")
+        config_to_append = None
+        config_to_push_back = None
+        min_score = 1  # max value of the emd.
+        for i, config in enumerate(configs):
+            if not available_mask[i]:
+                continue
+            for j, end_index in enumerate(end_points):
+                # --- FIX: integer comparison against per-group capacity, not float equality ---
+                if counts[j] < group_capacity[j] - 1:
+                    emd = cached_EMD(i, end_index, all_pdds, emd_cache)
+                    cell_diff_score = (
+                        np.linalg.norm(config.cell - configs[end_index].cell)
+                        / cell_norm
+                    )
+                    score = 0.9 * cell_diff_score + 0.1 * emd
+                    if score <= min_score:
+                        min_score = score
+                        config_to_append = i
+                        config_to_push_back = j
+
+        if config_to_append is None:
+            # --- FIX: fail loudly instead of silently writing to indicies[?][0] ---
+            raise RuntimeError(
+                "smart_group_by_emd: no eligible config found to place, "
+                "but not all groups are full. This should not happen — "
+                "check for NaNs/inf in EMD or cell_diff_score."
+            )
 
         # update
         end_points[config_to_push_back] = config_to_append

@@ -376,21 +376,29 @@ def generate_defect(
     defect_type: str = "schottky",
     order: int = 1,
 ) -> ase.Atoms:
-    """
-    Generates a config that contains a defect.
-
-    Parameters
-    ----------
-    order: int
-        for defect_type 'schottky' this gives nth order neighest neighbours of the highest charged element.
-        for defect_type 'frenkel' this gives the promixity of the involved atom and it's original initistitual pair.
-    """
     config.wrap()
-    if defect_type == "schottky":
-        config = generate_schottky_defect(config, targets, neighbour_order=order)
-    elif defect_type == "frenkel":
-        config = generate_frenkel_defect(config, targets, proximity=order)
 
+    # Identify cation and anion from targets (e.g., {"U": 1, "O": 2})
+    sorted_targets = sorted(targets.items(), key=lambda x: x[1])
+    cation, c_count = sorted_targets[0]  # Element with fewer atoms to remove
+    anion, a_count = sorted_targets[1]
+
+    if defect_type == "schottky":
+        cat_indices = [a.index for a in config if a.symbol == cation]
+        an_indices = [a.index for a in config if a.symbol == anion]
+
+        # Distances from first cation to anions under Minimum Image Convention (MIC)
+        c_idx = cat_indices[0]
+        dists = np.round(config.get_distances(c_idx, an_indices, mic=True), 8)
+        shells = np.unique(dists)
+        shell_indices = np.where(dists == shells[order])[0]
+        an_indices = [an_indices[i] for i in shell_indices]
+        config.pop(an_indices)
+        config.pop(c_idx)
+
+    elif defect_type == "frenkel":
+        # For Frenkel, implement defect
+        pass
     return config
 
 
